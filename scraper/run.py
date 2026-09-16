@@ -441,6 +441,23 @@ def cmd_doctor():
             for table in sorted(tables):
                 if table not in REQUIRED_TABLES:
                     detail("also found: '{0}'".format(table))
+
+            # Reading proves nothing about writing. The anon key can SELECT every
+            # table here and still be unable to save a single vehicle, which shows up
+            # later as a scrape that "worked" and stored nothing. Catch it now.
+            if all(bool(tables.get(t)) for t in REQUIRED_TABLES):
+                from scraper.db import check_write_access
+                can_write, why = check_write_access(supabase)
+                ok = check_line(
+                    can_write,
+                    "write access confirmed" if can_write
+                    else "CANNOT WRITE - {0}".format(why),
+                    "you probably pasted the anon key. In Supabase go to\n"
+                    "Project Settings > API Keys, reveal the 'service_role' key,\n"
+                    "and put THAT in .env as SUPABASE_SERVICE_ROLE_KEY.\n"
+                    "The anon key can read but never write, so scrapes would\n"
+                    "finish cleanly and save nothing.",
+                ) and ok
         except Exception as exc:
             ok = check_line(
                 False,
@@ -1126,7 +1143,7 @@ def build_parser():
             "  python -m scraper.run --doctor                  check the setup\n"
             "  python -m scraper.run --list                    show configured stores\n"
             "  python -m scraper.run --detect                  identify each site's platform\n"
-            "  python -m scraper.run --dealer village --dry-run  practice run, saves nothing\n"
+            "  python -m scraper.run --dealer lighthouse --dry-run  practice run, saves nothing\n"
             "  python -m scraper.run --all                     scrape everything, for real\n"
         ),
     )

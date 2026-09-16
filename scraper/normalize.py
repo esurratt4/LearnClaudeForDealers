@@ -39,6 +39,9 @@ ACRONYMS = {
     "awd", "fwd", "rwd", "4wd", "2wd", "4x4", "4x2",
     # powertrain shorthand
     "v6", "v8", "tdi", "phev", "hev", "bev", "mpg", "mph", "hp",
+    # body styles. These come through body_type, which is a column people
+    # actually look at -- without these you get "Suv" and "Cuv" on screen.
+    "suv", "cuv", "suvs",
 }
 
 

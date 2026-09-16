@@ -82,7 +82,7 @@ from ..normalize import (
 # WHY this is safe: http.polite_get keeps its own queue and spaces every request to a
 # site by that site's own crawl-delay, no matter how many workers we start. More
 # workers means we overlap the *waiting*, not that we hammer anybody harder.
-DEFAULT_WORKERS = 4
+DEFAULT_WORKERS = 5
 
 # We only ever follow sitemaps one level deep (a sitemap index pointing at sitemaps).
 # Some big sites have hundreds of child sitemaps; reading them all would take longer
@@ -680,7 +680,10 @@ def scrape(dealer, limit=None):
     base_url = dealer["url"].rstrip("/")
     condition = dealer.get("condition", "new")
     makes = dealer.get("makes") or None
-    workers = safe_int(os.environ.get("SCRAPER_WORKERS")) or DEFAULT_WORKERS
+    # max(1, ...) so a typo like SCRAPER_WORKERS=-2 in the .env cannot crash the run
+    # (ThreadPoolExecutor raises on a non-positive max_workers). Same guard dealeron.py
+    # and dealer_inspire.py use.
+    workers = max(1, safe_int(os.environ.get("SCRAPER_WORKERS")) or DEFAULT_WORKERS)
 
     print("  [Generic] Looking for a sitemap on %s..." % base_url)
     all_urls = collect_candidate_urls(base_url)

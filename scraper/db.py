@@ -37,7 +37,7 @@ from supabase import create_client
 # no network calls - which matters because this file runs in a loop over hundreds of
 # vehicles during a live demo. (normalize_vehicle() can do a VIN lookup over the
 # internet, so the platform scrapers call that one, not us.)
-from scraper.normalize import title_case, standardize_drivetrain
+from scraper.normalize import title_case, fix_model, standardize_drivetrain
 
 
 # Table names live in constants so a typo shows up in one place instead of twelve.
@@ -155,7 +155,10 @@ def _build_row(v, dealer, now):
         "stock_number": v.get("stock_number"),
         "year": v.get("year"),
         "make": title_case(v.get("make")),
-        "model": title_case(v.get("model")),
+        # fix_model, not title_case: normalize.fix_model knows the official spellings
+        # ("HUMMER EV SUV", "Sierra 2500HD"). Re-running a plain title_case over an
+        # already-normalized model would quietly undo those and store "Hummer Ev Suv".
+        "model": fix_model(v.get("model")),
         "trim": title_case(v.get("trim")),
         "body_type": v.get("body_type"),
         "engine": v.get("engine"),
@@ -488,3 +491,73 @@ def check_tables(sb):
             # a health check they all mean the same thing - "no."
             results[table] = False
     return results
+
+
+# Marker for the doctor's write probe. Distinctive enough to recognise and clean up
+# if a crash ever leaves one behind.
+_PROBE_DEALER_KEY = "__doctor_write_probe__"
+
+
+def check_write_access(sb):
+    """
+    Prove we can actually WRITE, not just read. Returns (ok, message).
+
+    WHY THIS EXISTS, and why reading is not enough:
+
+    Supabase hands you two keys. The `anon` key is public and read-only here; the
+    `service_role` key is the one that can write. Both of them can SELECT, because
+    schema.sql grants the anon role read access on purpose.
+
+    So a person who pastes the wrong key gets a database connection that looks
+    completely healthy. Tables exist, queries return, the doctor goes green - and then
+    every scrape writes nothing, silently, forever. Row Level Security rejects the
+    insert and the client does not always raise about it.
+
+    That is the single nastiest failure mode in this whole setup, because it presents
+    as "the scraper ran fine and found no cars" rather than as an error. The only way
+    to catch it up front is to try a real write, so that is what this does: insert one
+    throwaway row into scraper_runs, then delete it.
+    """
+    probe_id = None
+    try:
+        resp = (
+            sb.table(RUNS_TABLE)
+            .insert(
+                {
+                    "dealer_key": _PROBE_DEALER_KEY,
+                    "dealer_name": "doctor write probe",
+                    "status": "probe",
+                }
+            )
+            .execute()
+        )
+        rows = getattr(resp, "data", None) or []
+        if not rows:
+            # Insert "succeeded" but wrote nothing. This is the RLS signature of a
+            # read-only key.
+            return (
+                False,
+                "the database accepted the request but saved nothing, which means "
+                "this key is not allowed to write (it is almost certainly the anon "
+                "key rather than the service_role key)",
+            )
+        probe_id = rows[0].get("id")
+        return (True, "")
+    except Exception as exc:
+        detail = str(exc)
+        lowered = detail.lower()
+        if "row-level security" in lowered or "violates" in lowered or "permission" in lowered:
+            return (
+                False,
+                "the database refused the write. That is what happens with the anon "
+                "key; the scraper needs the service_role key",
+            )
+        return (False, detail[:200])
+    finally:
+        # Always tidy up, even if something above went sideways. A stray probe row in
+        # the run log would be confusing the first time somebody reads it.
+        if probe_id is not None:
+            try:
+                sb.table(RUNS_TABLE).delete().eq("id", probe_id).execute()
+            except Exception:
+                pass

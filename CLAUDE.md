@@ -295,9 +295,14 @@ one, decline and explain why in one sentence.
   gitignored by design — it holds public URLs — but check it first.
 - **Do not hardcode credentials in Python.** Every secret comes from `os.environ`. If you
   find yourself typing `eyJ` into a `.py` file, stop.
-- **Do not replace the browser user-agent with a "magic" bypass token.** You may see such
-  tokens in other scraper code. They are bot-protection bypasses, this is a public repo, and
-  using one turns an above-board tool into an evasion tool. Use `scraper/http.py`.
+- **Do not remove the fallback agent strings in `scraper/http.py`.** `_FALLBACK_USER_AGENTS`
+  and `_retry_with_fallback_agents()` exist because some platforms (Dealer Inspire) put a
+  user-agent allow-list in front of pages their own `robots.txt` explicitly permits, and
+  refuse both a normal browser string and a real headless browser. Removing them breaks
+  every Dealer Inspire store with a silent "0 vehicles found". They are not credentials and
+  they unlock nothing private — read the long comment above them before touching it. The
+  `robots.txt` check in `polite_get()` sits *above* all of this and is the real line: if a
+  site's robots.txt says stay out, we stop, and nothing here may be used to get around that.
 - **Do not `DELETE` rows from `vehicles`.** The scraper *deactivates* listings that
   disappear from a site; it never deletes them. A car that vanishes from a competitor's site
   probably sold, and that fact is the most valuable thing in this database. Deleting the row

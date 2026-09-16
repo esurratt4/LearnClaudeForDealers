@@ -483,7 +483,8 @@ def scrape(dealer, limit=None):
     """
     base_url = dealer["url"].rstrip("/")
     condition = dealer.get("condition", "new")
-    workers = safe_int(os.environ.get("SCRAPER_WORKERS")) or DEFAULT_WORKERS
+    # max(1, ...) so a typo like SCRAPER_WORKERS=-2 in the .env cannot crash the run.
+    workers = max(1, safe_int(os.environ.get("SCRAPER_WORKERS")) or DEFAULT_WORKERS)
 
     print("  [DealerOn] Reading sitemap.xml for %s..." % base_url)
     items = collect_vehicle_urls(base_url, condition)

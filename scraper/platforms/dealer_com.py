@@ -488,5 +488,16 @@ def scrape(dealer, limit=None):
             vehicle["drivetrain"] = decode_drivetrain_from_vin(vehicle["vin"])
         vehicles.append(vehicle)
 
+    # Optional brand filter from config/dealers.yml (`makes: ["GMC"]`). The other three
+    # adapters all honour it; without this a Dealer.com store configured with `makes`
+    # would silently return every brand on the lot.
+    makes_filter = dealer.get("makes")
+    if makes_filter:
+        wanted = set(m.strip().lower() for m in makes_filter if m)
+        before = len(vehicles)
+        vehicles = [v for v in vehicles if (v.get("make") or "").strip().lower() in wanted]
+        print("    Kept %d of %d vehicles matching makes: %s"
+              % (len(vehicles), before, ", ".join(makes_filter)))
+
     print("  [Dealer.com] Done: %d vehicles ready." % len(vehicles))
     return vehicles

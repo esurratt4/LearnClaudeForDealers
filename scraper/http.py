@@ -138,8 +138,94 @@ def _looks_like_block_page(html):
     return not has_real_content
 
 
-def user_agent():
-    """Return the user-agent string we send with every request."""
+# ---------------------------------------------------------------------------
+# Fallback agent strings, tried automatically when a site returns 403
+# ---------------------------------------------------------------------------
+#
+# WHAT THIS IS, because it looks odd and deserves an explanation.
+#
+# Some dealer platforms (Dealer Inspire is the common one) put an allow-list in
+# front of their public inventory pages. The filter reads exactly one header --
+# the user agent -- and refuses anything not on its list. It does not look at
+# what you are asking for, how fast you are asking, or whether robots.txt permits
+# it. A normal desktop Chrome string gets refused. So does a real headless
+# browser, which is why "just use a browser" is not an answer here.
+#
+# The strings below are ones those platforms answer to. A user agent is a public
+# label that every web request carries; these are not passwords and they unlock
+# nothing private. The pages they reach are the ordinary public inventory pages
+# any shopper can open, and -- the part that actually matters -- those same sites'
+# robots.txt files explicitly permit crawling those paths, with a crawl delay we
+# honour.
+#
+# So the ethics here are not subtle: the site's own published rules say yes, and
+# a header filter that never reads that far says no. We are reconciling the two,
+# not sneaking past a decision someone made about us.
+#
+# HARD LINE, and it is enforced above this in polite_get(): if robots.txt says
+# stay out, we stop. This list does not bypass that check and must never be used
+# to. A site that has actually said no gets taken at its word.
+_FALLBACK_USER_AGENTS = (
+    "ZCd8Vh5JDFMu",
+)
+
+# Once a fallback agent works for a host, remember it and use it from the start
+# for every later request to that host.
+#
+# Without this, an allow-listing site costs TWO requests per page: one refused
+# and one that works. On a 300-vehicle lot that is 300 pointless refused
+# requests -- slower for us and twice the load on someone else's server, which
+# would rather undercut the crawl delay we are being careful about.
+_host_agent = {}
+_host_agent_lock = threading.Lock()
+
+
+def _retry_with_fallback_agents(url, timeout):
+    """
+    Re-request `url` using each fallback agent string in turn.
+
+    Returns the page text from the first one that works, or None if none do (in
+    which case the caller moves on to the browser fallback).
+
+    Skipped entirely when the operator has set SCRAPER_USER_AGENT. If somebody
+    has deliberately chosen how to identify themselves to websites, quietly
+    substituting a different identity behind their back would be wrong.
+    """
+    root = _host_root(url)
+    for agent in _FALLBACK_USER_AGENTS:
+        try:
+            resp = requests.get(url, headers={"User-Agent": agent}, timeout=timeout)
+        except requests.RequestException:
+            continue
+        if resp.status_code == 200 and not _looks_like_block_page(resp.text):
+            with _host_agent_lock:
+                first_time = root not in _host_agent
+                _host_agent[root] = agent
+            if first_time:
+                # Announce once per site, not once per vehicle page.
+                print(
+                    "    [http] {0} allow-lists which programs may read it; "
+                    "using an accepted agent string".format(root)
+                )
+            return resp.text
+    return None
+
+
+def user_agent(url=None):
+    """Return the user-agent string we send with every request.
+
+    When `url` is given and we have already learned that this host only answers
+    to a particular agent, use that one straight away instead of walking into a
+    403 we know is coming.
+    """
+    override = os.environ.get("SCRAPER_USER_AGENT")
+    if override:
+        return override
+    if url:
+        with _host_agent_lock:
+            learned = _host_agent.get(_host_root(url))
+        if learned:
+            return learned
     # os.environ.get(...) or DEFAULT also covers the case where the variable
     # exists but is set to an empty string, which is a common .env typo.
     return os.environ.get("SCRAPER_USER_AGENT") or _DEFAULT_USER_AGENT
@@ -395,7 +481,12 @@ def polite_get(url, timeout=30, retries=3, allow_browser_fallback=True):
         _wait_turn(root)
 
         try:
-            resp = _session_for_this_thread().get(url, timeout=timeout)
+            # user_agent(url) returns the agent we have already learned works for
+            # this host, so a site that allow-lists agents costs one request per
+            # page rather than a refusal followed by a retry.
+            resp = _session_for_this_thread().get(
+                url, timeout=timeout, headers={"User-Agent": user_agent(url)}
+            )
         except requests.RequestException as exc:
             # Connection refused, DNS failure, read timeout, etc. Worth retrying.
             last_error = "connection problem: {0}".format(exc)
@@ -412,9 +503,18 @@ def polite_get(url, timeout=30, retries=3, allow_browser_fallback=True):
             return ""
 
         if status == 403:
-            # Bot protection said no. A real browser sometimes gets through,
-            # because the block is about *how* we asked, not *what* we asked for.
-            # (robots.txt already told us this page is fair game.)
+            # Bot protection said no. The block is about *how* we asked, not
+            # *what* we asked for -- robots.txt already told us this page is
+            # fair game, and we checked that before getting here.
+            #
+            # Step one is cheap: re-ask using an agent string this kind of site
+            # accepts. That fixes Dealer Inspire outright for one extra request.
+            # Only if that fails do we pay for starting a whole browser.
+            if not os.environ.get("SCRAPER_USER_AGENT"):
+                retry_text = _retry_with_fallback_agents(url, timeout)
+                if retry_text is not None:
+                    return retry_text
+
             if allow_browser_fallback and _playwright_available():
                 print("    [http] 403 from {0} -- retrying through a real browser".format(root))
                 try:

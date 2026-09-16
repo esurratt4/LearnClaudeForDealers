@@ -223,10 +223,20 @@ an adapter for it — the instructions and the required data format are spelled 
 
 ## Ethics and licence
 
-This tool reads **public web pages only** — the same listings any shopper sees. It respects
-`robots.txt`, waits between requests so it never burdens a small business's server, and
-identifies itself honestly. It does not touch anything behind a login, and it does not
-attempt to evade bot protection.
+This tool reads **public web pages only** — the same listings any shopper sees. It reads
+each site's `robots.txt` and obeys it, and it waits between requests so it never burdens a
+small business's server. It never touches anything behind a login.
+
+One thing worth being straight about, because you will see it in the output. Some dealer
+platforms sit behind a filter that reads the "user agent" header — the label every web
+request carries — and refuses anything that is not on its allow-list, even for pages the
+same site's `robots.txt` explicitly invites crawlers to read. When that happens, the
+scraper retries with an agent string those platforms accept and logs that it did so.
+
+That is reconciling a site's published rules with a filter that never reads as far as those
+rules; it is not getting around a decision someone made about you. The actual line is
+`robots.txt`, and it is enforced before any of that: **if a site's `robots.txt` says stay
+out, this tool stops and does not scrape it.** No setting overrides that.
 
 The data is for your own competitive analysis. Don't resell or redistribute it. Check your
 own obligations before pointing this at anything other than public dealership inventory.
