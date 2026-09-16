@@ -74,7 +74,7 @@ cp .env.example .env
 ```
 
 Open `.env` and paste in your **Project URL** and **service_role key**. Both are in your
-Supabase dashboard under Project Settings → API. This file stays on your machine — it is
+Supabase dashboard under Project Settings → API Keys. This file stays on your machine — it is
 already excluded from git.
 
 **3. Create the tables**

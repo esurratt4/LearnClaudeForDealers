@@ -18,7 +18,7 @@ part that this file picks up and uses. In plain English, here is what it can do:
         "What website software does this store use?" Looks at each dealer's site
         and reports which platform it runs on. Never writes anything.
 
-    python -m scraper.run --dealer village --dry-run
+    python -m scraper.run --dealer lighthouse --dry-run
         "Show me what you would collect, but do not save it." Scrapes, prints a
         sample of the cars it found, and touches nothing in the database.
 
