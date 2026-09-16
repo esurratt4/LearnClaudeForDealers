@@ -51,3 +51,14 @@ __pycache__/
 #
 # config/dealers.yml
 # ---------------------------------------------------------------------------
+
+# Your dashboard's settings file.
+#
+# dashboard/config.js holds your Supabase URL and your *anon* key. That key is
+# read-only by design — sql/schema.sql grants it SELECT and nothing else — so
+# this is nowhere near as dangerous as .env. But it is still a key, and it is
+# specific to YOUR project, so it does not belong in a shared repo: anyone who
+# cloned this would end up pointed at your database instead of their own.
+#
+# dashboard/config.example.js IS committed. That is the template people copy.
+dashboard/config.js

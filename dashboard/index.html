@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Competitive Inventory Dashboard</title>
+
+<!--
+================================================================================
+  COMPETITIVE INVENTORY DASHBOARD
+  Read this part first. It is written for a human, not a programmer.
+================================================================================
+
+  WHAT THIS FILE IS
+  One web page. That is it. There is no app to install, no "build step", no
+  node_modules folder. Everything the dashboard needs - the layout, the styling,
+  the charts, the logic - lives inside this single file. You can email it to
+  someone and it still works.
+
+  HOW TO OPEN IT
+  From the project folder, in a terminal:
+
+      python3 -m http.server 8000 --directory dashboard
+
+  then open http://localhost:8000 in your browser.
+
+  Why not just double-click the file? Because a double-clicked file opens as
+  "file:///..." and some browsers refuse to let a file:// page make network
+  calls. The dashboard would look broken for a reason that has nothing to do
+  with your data. Serving it over http:// avoids that entirely. You already
+  have python3 installed - it is what runs the scraper - so this costs nothing.
+
+  WHERE THE DATA COMES FROM
+  Supabase, the same database the scraper writes to. This page reads it over
+  plain HTTPS using the built-in fetch() function. Five reads, fired at the
+  same time, one per report.
+
+  ABOUT THE KEY IN config.js  (this is the important security idea)
+  Supabase gives you two keys:
+    - the ANON key    - can only READ, and only what the database's rules allow.
+                        That is the one in config.js and the one in this page.
+    - the SERVICE_ROLE key - can write and delete anything, and ignores every
+                        rule. The SCRAPER uses that one. It lives in .env and in
+                        GitHub Secrets and it must NEVER appear in a browser.
+  Anything in a web page is visible to anyone who opens the page - "view source"
+  is one keystroke away. So a browser app gets the read-only key, always. That
+  is exactly why sql/schema.sql grants anon SELECT and nothing else.
+
+  WHAT EACH SECTION ANSWERS
+    1. KPI row .............. Where do I stand right now, at a glance?
+    2. They Have, You Don't . What are they all stocking that I am not? Each row
+                              is a car to consider ordering or sourcing. This is
+                              the whole reason the product exists.
+    3. Price Position ....... On the cars we BOTH stock, am I above or below the
+                              market, and by how much?
+    4. Competitor Price Cuts. Who blinked? What did they list it at, what is it
+                              now, and how many days did they hold out first.
+                              Empty on day one - a price cut needs two looks.
+    5. The Lots ............. One line per store. Units, average price, average
+                              days on lot, when we last looked.
+
+  NO CHART LIBRARY ON PURPOSE
+  The bars in the Price Position section are plain HTML and CSS - coloured
+  rectangles sized with a percentage width. No chart library is downloaded from
+  anywhere. That is a deliberate choice: the single most likely thing to fail in
+  a hotel conference room is the wifi, and a blocked CDN would otherwise turn
+  this page into a blank white screen in front of a room full of people. This
+  page's ONLY network call is to your Supabase database. If that call fails, you
+  get a clear message explaining which kind of failure it was.
+
+  WANT TO CHANGE SOMETHING?
+  Open this folder with Claude Code and ask in plain English, for example:
+    "in the dashboard, show the top 25 gap rows instead of 15"
+    "add a column for average mileage to The Lots table"
+  Each block of code below has a heading comment so it is easy to point at.
+================================================================================
+-->
+
+<style>
+/* ==========================================================================
+   1. DESIGN TOKENS
+   Every colour and size used anywhere on the page is named here once. Change a
+   value here and it changes everywhere. Nothing below invents its own colour.
+
+   The background is LIGHT on purpose. This gets projected in a lit room, and a
+   projector washes dark themes out into unreadable grey mush.
+   ========================================================================== */
+:root {
+  --bg:        #FAFAF9;   /* page background, a warm off-white */
+  --card:      #FFFFFF;
+  --line:      #E7E5E4;   /* hairline borders */
+  --line-soft: #F0EEED;
+
+  --ink:       #1C1917;   /* primary text, near black */
+  --ink-2:     #57534E;   /* secondary text */
+  --ink-3:     #78716C;   /* labels, captions, "--" placeholders.
+                             Deliberately NOT lighter than this: a projector in a
+                             lit room eats low-contrast grey, and these carry the
+                             column headings. */
+
+  /* ONE accent colour, used with restraint. It means "you / your store". */
+  --accent:      #2D7A74;
+  --accent-soft: #E8F1F0;
+
+  /* The competitors. A neutral, non-alarming earth tone - they are not the
+     enemy in the colour system, they are just the other side of the table. */
+  --comp:      #8C7355;
+  --comp-soft: #F3EFE9;
+
+  /* Semantic colours. Used ONLY where the colour carries meaning:
+     good  = in your favour (you are cheaper, you turn faster)
+     bad   = against you (you are priced above market, a competitor cut price) */
+  --good:      #4A7C59;
+  --good-bg:   #D6EAD9;
+  --good-text: #2D5E38;
+  --bad:       #9B3D2B;
+  --bad-bg:    #EDD5CF;
+  --bad-text:  #6B2418;
+
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(28,25,23,.04), 0 1px 12px rgba(28,25,23,.03);
+}
+
+/* ==========================================================================
+   2. BASE / TYPOGRAPHY
+   System fonts only - no Google Fonts request, so nothing to fail to load.
+   "tabular-nums" makes every digit the same width, which is what stops a column
+   of prices from looking like a ransom note.
+   ========================================================================== */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+.wrap { max-width: 1400px; margin: 0 auto; padding: 0 28px 72px; }
+
+/* ---- Page header -------------------------------------------------------- */
+.pagehead {
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  margin-bottom: 26px;
+}
+.pagehead-in {
+  max-width: 1400px; margin: 0 auto; padding: 22px 28px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+}
+.pagehead h1 {
+  margin: 0 0 3px; font-size: 25px; font-weight: 600; letter-spacing: -.02em;
+}
+.pagehead .eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 7px;
+}
+.pagehead .meta { font-size: 13.5px; color: var(--ink-2); }
+.pagehead .meta b { font-weight: 600; color: var(--ink); }
+.headright { display: flex; align-items: center; gap: 14px; }
+
+.btn {
+  font: inherit; font-size: 13px; font-weight: 500;
+  color: var(--ink-2); background: var(--card);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 7px 14px; cursor: pointer; transition: all .12s;
+}
+.btn:hover { border-color: var(--ink-3); color: var(--ink); }
+.btn[disabled] { opacity: .5; cursor: default; }
+
+/* ---- Section / card ----------------------------------------------------- */
+section { margin-bottom: 30px; }
+.sechead { margin-bottom: 12px; }
+.sechead h2 {
+  margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.01em;
+}
+.sechead p { margin: 3px 0 0; font-size: 13.5px; color: var(--ink-2); max-width: 78ch; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.card-pad { padding: 18px 20px; }
+
+/* ---- KPI row ------------------------------------------------------------ */
+.kpis {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.kpi { padding: 20px 22px; border-left: 1px solid var(--line-soft); }
+.kpi:first-child { border-left: 0; }
+.kpi .label {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .085em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 9px;
+}
+.kpi .value {
+  font-size: 38px; font-weight: 500; letter-spacing: -.028em;
+  line-height: 1; color: var(--ink);
+}
+.kpi .value.sm { font-size: 30px; }
+.kpi .sub { margin-top: 8px; font-size: 12.5px; color: var(--ink-2); }
+.kpi .sub .mut { color: var(--ink-3); }
+.kpi .value.accent { color: var(--accent); }
+.pill {
+  display: inline-block; padding: 2px 7px; border-radius: 5px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: .01em;
+}
+.pill.good { background: var(--good-bg); color: var(--good-text); }
+.pill.bad  { background: var(--bad-bg);  color: var(--bad-text); }
+.pill.mut  { background: #F5F5F4;        color: var(--ink-2); }
+
+/* ---- Tables ------------------------------------------------------------- */
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: #FAFAF9; text-align: left; white-space: nowrap;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .075em;
+  text-transform: uppercase; color: var(--ink-3);
+  padding: 11px 14px; border-bottom: 1px solid var(--line);
+}
+tbody td {
+  padding: 11px 14px; border-top: 1px solid var(--line-soft);
+  white-space: nowrap; color: var(--ink-2);
+}
+tbody tr:first-child td { border-top: 0; }
+tbody tr:hover { background: #FBFAF9; }
+td.strong { color: var(--ink); font-weight: 500; }
+td.r, th.r { text-align: right; }
+/* Tables are NEVER given a fixed height with an inner scrollbar. A capped box
+   slices the last row in half, and half a row of text is the one thing on this
+   page that reads as "broken" from the back of a room. Nobody scrolls an inner
+   panel on a projector anyway. Each table shows a fixed number of rows and says
+   underneath how many more there are - the page itself is the scrollbar. */
+.rank {
+  color: var(--ink-3); font-size: 12px; width: 34px;
+}
+.sub-line { display: block; font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+a.listing { color: var(--accent); text-decoration: none; }
+a.listing:hover { text-decoration: underline; }
+
+/* ---- The gap section: two columns, the proven "have / have not" framing -- */
+/* align-items:start so the shorter card stops at its content instead of
+   stretching to match its neighbour and leaving a large white void. */
+.twocol { display: grid; grid-template-columns: 1.55fr 1fr; gap: 20px;
+          align-items: start; }
+.colhead {
+  font-size: 11px; font-weight: 700; letter-spacing: .085em;
+  text-transform: uppercase; padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.colhead.them { color: var(--bad);  background: #FDF8F6; }
+.colhead.you  { color: var(--good); background: #F6FAF6; }
+.colhead span { font-weight: 500; letter-spacing: 0; text-transform: none;
+                color: var(--ink-3); font-size: 12px; margin-left: 8px; }
+
+/* ---- Diverging bars (Price Position) -------------------------------------
+   Hand-built out of two divs. The row is split down the middle; a bar that
+   grows LEFT from the centre means you are cheaper, a bar that grows RIGHT
+   means you are priced above the market. No chart library involved.
+   -------------------------------------------------------------------------- */
+.bars { padding: 6px 20px 18px; }
+.barlegend {
+  display: flex; gap: 22px; align-items: center; justify-content: center;
+  font-size: 11.5px; color: var(--ink-2); padding: 4px 0 14px;
+}
+.barlegend b { font-weight: 600; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+          margin-right: 6px; vertical-align: -1px; }
+.barrow {
+  display: grid; grid-template-columns: 230px 1fr 118px;
+  align-items: center; gap: 14px; padding: 7px 0;
+}
+.barlabel { font-size: 13.5px; color: var(--ink); overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap; }
+.barlabel .mut { color: var(--ink-3); }
+.bartrack {
+  position: relative; height: 22px; background: #FAFAF9;
+  border-radius: 4px; border: 1px solid var(--line-soft);
+}
+.bartrack::after {  /* the zero line down the middle */
+  content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px;
+  width: 1px; background: var(--ink-3); opacity: .5;
+}
+.bar { position: absolute; top: 4px; bottom: 4px; border-radius: 3px; }
+.bar.right { left: 50%; background: var(--bad); }
+.bar.left  { right: 50%; background: var(--good); }
+.barval { font-size: 13.5px; font-weight: 600; text-align: right; }
+.barval.over  { color: var(--bad-text); }
+.barval.under { color: var(--good-text); }
+.barval.tie   { color: var(--ink-3); font-weight: 500; }
+.baraxis {
+  display: grid; grid-template-columns: 230px 1fr 118px; gap: 14px;
+  font-size: 11px; color: var(--ink-3); padding-top: 6px;
+}
+.baraxis div:nth-child(2) { display: flex; justify-content: space-between; }
+
+/* ---- Empty / error states ----------------------------------------------
+   These are NOT decoration. On day one, half this dashboard is empty, and an
+   empty panel that explains itself is a reason to keep the scraper running.
+   -------------------------------------------------------------------------- */
+.empty { padding: 34px 26px; text-align: center; }
+.empty .hl {
+  font-size: 15px; font-weight: 500; color: var(--ink); margin-bottom: 5px;
+}
+.empty .txt { font-size: 13.5px; color: var(--ink-2); max-width: 62ch;
+              margin: 0 auto; }
+.empty code, code.cmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; background: #F5F5F4; border: 1px solid var(--line);
+  border-radius: 5px; padding: 3px 7px; color: var(--ink);
+  white-space: nowrap;
+}
+.empty .cmdline { margin-top: 14px; }
+
+.banner {
+  border-radius: var(--radius); padding: 20px 22px; margin-bottom: 26px;
+  border: 1px solid var(--line); background: var(--card);
+  box-shadow: var(--shadow);
+}
+.banner.error { border-color: #E3C4BB; background: #FDF7F5; }
+.banner.note  { border-color: #DCE7E5; background: #F5FAF9; }
+.banner h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+.banner.error h3 { color: var(--bad-text); }
+.banner p { margin: 0 0 8px; font-size: 14px; color: var(--ink-2); max-width: 88ch; }
+.banner ul { margin: 8px 0 0; padding-left: 20px; font-size: 14px; color: var(--ink-2); }
+.banner li { margin-bottom: 5px; }
+.banner .detail {
+  margin-top: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; color: var(--ink-2); background: #F5F5F4;
+  border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px;
+  overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+}
+
+/* ---- Loading skeleton --------------------------------------------------- */
+.skel { background: #F2F1F0; border-radius: 5px; animation: pulse 1.3s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .55 } }
+
+.foot {
+  margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--ink-3); display: flex;
+  justify-content: space-between; gap: 18px; flex-wrap: wrap;
+}
+
+/* ---- Laptop widths. We care about 1280px, not phones. ------------------- */
+@media (max-width: 1180px) {
+  .kpis { grid-template-columns: repeat(3, 1fr); }
+  .kpi:nth-child(4) { border-left: 0; }
+  .kpi { border-top: 1px solid var(--line-soft); }
+  .kpi:nth-child(-n+3) { border-top: 0; }
+  .twocol { grid-template-columns: 1fr; }
+  .barrow, .baraxis { grid-template-columns: 170px 1fr 104px; }
+}
+@media (max-width: 760px) {
+  .wrap, .pagehead-in { padding-left: 16px; padding-right: 16px; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .kpi { border-left: 0; border-top: 1px solid var(--line-soft); }
+  .kpi:nth-child(-n+2) { border-top: 0; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ==========================================================================
+     THE PAGE SKELETON
+     Every block below is empty to start with. JavaScript fills each one in once
+     the data arrives. Nothing here is hard-coded data.
+     ========================================================================== -->
+
+<header class="pagehead">
+  <div class="pagehead-in">
+    <div>
+      <div class="eyebrow">Competitive Inventory</div>
+      <h1 id="dealerName">Loading...</h1>
+      <div class="meta" id="headMeta">Connecting to the database...</div>
+    </div>
+    <div class="headright">
+      <div class="meta" id="headScraped"></div>
+      <button class="btn" id="refreshBtn" type="button">Refresh</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- Fatal problems (no config, bad key, database unreachable) land here. -->
+  <div id="banner"></div>
+
+  <!-- 1. KPI ROW ------------------------------------------------------------>
+  <section id="kpiSection">
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <!-- 2. THEY HAVE IT, YOU DON'T -------------------------------------------->
+  <section id="gapSection">
+    <div class="sechead">
+      <h2>They have it, you don't</h2>
+      <p>Model and trim combinations the competition is stocking in real volume
+         while your lot has none. Sorted by how many units are out there. Each
+         row is a car to consider ordering, or to go find at auction.</p>
+    </div>
+    <div class="twocol">
+      <div class="card">
+        <div class="colhead them">They Have, You Don't
+          <span id="gapCountThem"></span></div>
+        <div id="gapThem"></div>
+      </div>
+      <div class="card">
+        <div class="colhead you">You Have, They Don't
+          <span id="gapCountYou"></span></div>
+        <div id="gapYou"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. PRICE POSITION ----------------------------------------------------->
+  <section id="priceSection">
+    <div class="sechead">
+      <h2>Price position</h2>
+      <p>Only the model and trim combinations where you and at least one
+         competitor both have a unit on the ground today. Bars to the left mean
+         you are the cheaper store. Bars to the right mean you are asking more
+         than the market.</p>
+    </div>
+    <div class="card" id="priceCard"></div>
+  </section>
+
+  <!-- 4. COMPETITOR PRICE CUTS ---------------------------------------------->
+  <section id="dropSection">
+    <div class="sechead">
+      <h2>Competitor price cuts</h2>
+      <p>Units a competitor has marked down since the first time we saw them.
+         The "held out" column is how many days they sat on the original number
+         before they blinked - that is their aging pain, in days.</p>
+    </div>
+    <div class="card" id="dropCard"></div>
+  </section>
+
+  <!-- 5. THE LOTS ----------------------------------------------------------->
+  <section id="lotSection">
+    <div class="sechead">
+      <h2>The lots</h2>
+      <p>One line per store we track, newest scrape included, so you can see at
+         a glance whether a number moved because the market moved or because the
+         scraper did not run.</p>
+    </div>
+    <div class="card" id="lotCard"></div>
+  </section>
+
+  <div class="foot">
+    <div>Read-only view. This page uses the Supabase <b>anon</b> key, which can
+         SELECT and nothing else. The scraper writes with the service_role key,
+         which never touches a browser.</div>
+    <div id="footStamp"></div>
+  </div>
+
+</div>
+
+<!-- config.js sets window.DASHBOARD_CONFIG (your Supabase URL, the read-only
+     anon key, and your dealership's name). It is gitignored because the key is
+     per-user. If this file is missing, the page says so in plain English rather
+     than showing an empty dashboard. -->
+<script src="config.js" onerror="window.__CONFIG_LOAD_FAILED = true"></script>
+
+<script>
+"use strict";
+/* ==========================================================================
+   3. SMALL HELPERS
+   Formatting money, counts and dates. Every one of them handles null/undefined
+   by returning an em dash, because a stray "NaN" or "undefined" on a projector
+   is the fastest way to lose a room.
+   ========================================================================== */
+
+var DASH = "—"; // an em dash, the polite way to write "no value"
+
+function isNum(v) { return v !== null && v !== undefined && v !== "" && isFinite(Number(v)); }
+
+/** $58,900 - money looks like money, no decimals. */
+function money(v) {
+  if (!isNum(v)) return DASH;
+  var n = Math.round(Number(v));
+  var s = "$" + Math.abs(n).toLocaleString("en-US");
+  return n < 0 ? "-" + s : s;
+}
+/** 1,284 - counts get thousands separators. */
+function num(v, digits) {
+  if (!isNum(v)) return DASH;
+  return Number(v).toLocaleString("en-US", {
+    minimumFractionDigits: digits || 0, maximumFractionDigits: digits || 0
+  });
+}
+/** 12.4 days, or an em dash. */
+function days(v) {
+  if (!isNum(v)) return DASH;
+  return num(v, 1);
+}
+/** Escape anything that came out of the database before putting it in the page.
+    Dealer names and trims are text we did not write, so we never trust them. */
+function esc(s) {
+  if (s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+/** "2 hours ago" / "yesterday" - friendlier than a timestamp in a headline. */
+function ago(iso) {
+  if (!iso) return null;
+  var t = new Date(iso);
+  if (isNaN(t.getTime())) return null;
+  var mins = Math.floor((Date.now() - t.getTime()) / 60000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return mins + " minutes ago";
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs === 1 ? "1 hour ago" : hrs + " hours ago";
+  var d = Math.floor(hrs / 24);
+  if (d === 1) return "yesterday";
+  return d + " days ago";
+}
+function stamp(iso) {
+  if (!iso) return DASH;
+  var t = new Date(iso);
+  if (isNaN(t.getTime())) return DASH;
+  return t.toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+  });
+}
+/** "Sierra 1500 - AT4" from make / model / trim. */
+function vehicleLabel(r, withMake) {
+  var head = withMake ? [r.make, r.model].filter(Boolean).join(" ") : r.model;
+  return esc(head || DASH) +
+    (r.trim ? ' <span class="mut">' + esc(r.trim) + "</span>" : "");
+}
+function $(id) { return document.getElementById(id); }
+
+/** A calm, explanatory empty state. Never a blank box. */
+function emptyState(headline, text, cmd) {
+  return '<div class="empty"><div class="hl">' + esc(headline) + "</div>" +
+    '<div class="txt">' + text + "</div>" +
+    (cmd ? '<div class="cmdline"><code class="cmd">' + esc(cmd) + "</code></div>" : "") +
+    "</div>";
+}
+
+/* ==========================================================================
+   4. READING FROM SUPABASE
+   PostgREST turns every table and view into a web address. Asking for a view is
+   a plain GET request with two headers carrying the read-only key:
+
+       GET  {SUPABASE_URL}/rest/v1/v_market_gaps?select=*
+       apikey:        <anon key>
+       Authorization: Bearer <anon key>
+
+   That is all supabase-js would be doing for a read, so we skip the library
+   entirely - one less thing to download from the internet in a live session.
+   ========================================================================== */
+
+var CFG = window.DASHBOARD_CONFIG || null;
+
+/** Distinguishes the failure kinds that matter. Confusing "no rows" with
+    "wrong key" on stage would be very bad, so each gets its own message. */
+function ApiError(kind, message, detail) {
+  this.kind = kind; this.message = message; this.detail = detail || "";
+}
+
+function fetchView(view, query, wantCount) {
+  var url = CFG.supabaseUrl.replace(/\/+$/, "") + "/rest/v1/" + view +
+            "?" + (query || "select=*");
+  var headers = {
+    apikey: CFG.supabaseAnonKey,
+    Authorization: "Bearer " + CFG.supabaseAnonKey
+  };
+  // count=exact asks Postgres for the true total row count, which comes back in
+  // the Content-Range header. That is how the header can say "1,284 rows" even
+  // though we only downloaded the first few thousand.
+  if (wantCount) headers["Prefer"] = "count=exact";
+
+  return fetch(url, { headers: headers, cache: "no-store" })
+    .then(function (res) {
+      if (!res.ok) {
+        return res.text().then(function (body) {
+          var kind = "http";
+          if (res.status === 401 || res.status === 403) kind = "auth";
+          else if (res.status === 404) kind = "missing";
+          throw new ApiError(kind,
+            "Supabase answered " + res.status + " for " + view, body.slice(0, 500));
+        });
+      }
+      var total = null;
+      var range = res.headers.get("content-range"); // e.g. "0-999/1284"
+      if (range && range.indexOf("/") > -1) {
+        var tail = range.split("/")[1];
+        if (tail !== "*" && isNum(tail)) total = Number(tail);
+      }
+      return res.json().then(function (rows) {
+        return { rows: Array.isArray(rows) ? rows : [], total: total };
+      });
+    })
+    .catch(function (err) {
+      if (err instanceof ApiError) throw err;
+      // fetch() only rejects like this when the request never got an answer:
+      // no wifi, wrong hostname, DNS failure, a blocking proxy.
+      throw new ApiError("network",
+        "Could not reach " + CFG.supabaseUrl, String(err && err.message || err));
+    });
+}
+
+/* ==========================================================================
+   5. FATAL SCREENS
+   Three things can go wrong before we ever see a row, and each one needs its
+   own answer. A dashboard that just sits there empty teaches nothing.
+   ========================================================================== */
+
+function showBanner(html) { $("banner").innerHTML = html; }
+
+function fatalConfig(reason, headline) {
+  $("dealerName").textContent = "Dashboard not configured";
+  $("headMeta").textContent = reason;
+  showBanner(
+    '<div class="banner error"><h3>' +
+    esc(headline || "config.js is missing or incomplete") + "</h3>" +
+    "<p>" + esc(reason) + "</p>" +
+    "<p>This dashboard needs to be told where your database is. Copy the example " +
+    "file and fill in the two values from your Supabase project " +
+    "(Settings &rarr; API):</p>" +
+    '<div class="detail">cp dashboard/config.example.js dashboard/config.js</div>' +
+    "<ul>" +
+    "<li><b>supabaseUrl</b> &mdash; the Project URL, it looks like " +
+    "<code>https://abcdefgh.supabase.co</code></li>" +
+    "<li><b>supabaseAnonKey</b> &mdash; the <b>anon / public</b> key. Not the " +
+    "service_role key. Never the service_role key in a browser.</li>" +
+    "<li><b>dealershipName</b> &mdash; whatever should appear at the top of this page.</li>" +
+    "</ul>" +
+    "<p>Then reload this page.</p></div>"
+  );
+  hideDataSections();
+}
+
+function fatalApi(err) {
+  var title, body;
+  if (err.kind === "auth") {
+    title = "The database refused the key";
+    body = "<p>Supabase answered, so your internet and your project URL are fine " +
+      "&mdash; it just would not accept that key. Usually one of three things:</p><ul>" +
+      "<li>The <b>anon key</b> in <code>dashboard/config.js</code> is a typo, or is " +
+      "from a different Supabase project.</li>" +
+      "<li><code>sql/schema.sql</code> has not been run yet, so the anon role has no " +
+      "<code>GRANT SELECT</code> on the views.</li>" +
+      "<li>The key was rotated in Supabase and config.js still has the old one.</li>" +
+      "</ul><p>This is <b>not</b> an empty database. It is a permission problem.</p>";
+  } else if (err.kind === "missing") {
+    title = "The reports do not exist yet";
+    body = "<p>The database answered, but it has never heard of these views. Open " +
+      "your Supabase project, click <b>SQL Editor</b>, paste the whole of " +
+      "<code>sql/schema.sql</code>, and run it. Then reload this page.</p>";
+  } else if (err.kind === "network") {
+    title = "Could not reach the database";
+    body = "<p>The request never got an answer. That is a connection problem, not a " +
+      "data problem &mdash; there may well be plenty of inventory in there.</p><ul>" +
+      "<li>Check the wifi.</li>" +
+      "<li>Check <b>supabaseUrl</b> in <code>dashboard/config.js</code> for a typo.</li>" +
+      "<li>If you opened this file by double-clicking it, that is the likely cause. " +
+      "Serve it instead: <code>python3 -m http.server 8000 --directory dashboard</code> " +
+      "then open <code>http://localhost:8000</code>.</li>" +
+      "<li>A locked-down work laptop or VPN may be blocking the connection.</li></ul>";
+  } else {
+    title = "The database returned an error";
+    body = "<p>Supabase answered, but not with data. The exact message is below.</p>";
+  }
+  showBanner('<div class="banner error"><h3>' + esc(title) + "</h3>" + body +
+    (err.detail ? '<div class="detail">' + esc(err.message + "\n" + err.detail) + "</div>"
+                : '<div class="detail">' + esc(err.message) + "</div>") + "</div>");
+  $("headMeta").textContent = "Could not load data";
+  hideDataSections();
+}
+
+function hideDataSections() {
+  ["kpiSection", "gapSection", "priceSection", "dropSection", "lotSection"]
+    .forEach(function (id) { $(id).style.display = "none"; });
+}
+function showDataSections() {
+  ["kpiSection", "gapSection", "priceSection", "dropSection", "lotSection"]
+    .forEach(function (id) { $(id).style.display = ""; });
+}
+
+/* ==========================================================================
+   6. LOADING STATE
+   Grey blocks in the right shape, so the page does not jump around when the
+   real numbers land.
+   ========================================================================== */
+function showSkeleton() {
+  var k = "";
+  for (var i = 0; i < 5; i++) {
+    k += '<div class="kpi">' +
+         '<div class="skel" style="height:11px;width:70%;margin-bottom:12px"></div>' +
+         '<div class="skel" style="height:34px;width:52%"></div>' +
+         '<div class="skel" style="height:11px;width:62%;margin-top:12px"></div></div>';
+  }
+  $("kpis").innerHTML = k;
+  var block = '<div class="card-pad">' +
+    '<div class="skel" style="height:14px;width:45%;margin-bottom:12px"></div>' +
+    '<div class="skel" style="height:14px;width:78%;margin-bottom:12px"></div>' +
+    '<div class="skel" style="height:14px;width:60%"></div></div>';
+  $("gapThem").innerHTML = block;
+  $("gapYou").innerHTML = block;
+  $("priceCard").innerHTML = block;
+  $("dropCard").innerHTML = block;
+  $("lotCard").innerHTML = block;
+}
+
+/* ==========================================================================
+   7. LOAD EVERYTHING
+   All five reports are requested at the same moment, not one after another.
+   Five round trips in sequence would take five times as long, and this page
+   gets opened in front of an audience.
+   ========================================================================== */
+
+var INVENTORY_LIMIT = 10000; // plenty for any single rooftop group
+
+function loadAll() {
+  var btn = $("refreshBtn");
+  btn.disabled = true;
+  btn.textContent = "Loading...";
+
+  var jobs = [
+    // Only the columns we actually use. Asking for fewer columns is the single
+    // easiest way to make this page load fast on a slow connection.
+    fetchView("v_active_inventory",
+      "select=dealer_key,dealer_name,is_own_store,condition,make,model,trim," +
+      "days_on_lot,msrp,selling_price&limit=" + INVENTORY_LIMIT, true),
+    fetchView("v_market_gaps", "select=*&limit=300"),
+    fetchView("v_price_comparison", "select=*&limit=300"),
+    fetchView("v_inventory_by_dealer", "select=*"),
+    // Biggest cuts first. We pull a few hundred and filter in the browser so
+    // the KPI can count them and the table can show only the live ones.
+    fetchView("v_price_drops", "select=*&order=price_drop.desc&limit=300")
+  ];
+
+  Promise.all(jobs).then(function (res) {
+    showBanner("");
+    showDataSections();
+    render({
+      inventory:     res[0].rows,
+      inventoryTotal: res[0].total !== null ? res[0].total : res[0].rows.length,
+      gaps:          res[1].rows,
+      priceCompare:  res[2].rows,
+      dealers:       res[3].rows,
+      drops:         res[4].rows
+    });
+  }).catch(function (err) {
+    fatalApi(err instanceof ApiError ? err
+      : new ApiError("http", String(err && err.message || err), ""));
+  }).then(function () {
+    btn.disabled = false;
+    btn.textContent = "Refresh";
+    $("footStamp").textContent = "Dashboard loaded " + stamp(new Date().toISOString());
+  });
+}
+
+/* ==========================================================================
+   8. RENDER
+   One function per panel. Each one decides for itself whether it has data, and
+   says something useful when it does not.
+   ========================================================================== */
+
+function render(d) {
+  // Two different slices of the same data, used for two different jobs:
+  //
+  //  - d.dealers (v_inventory_by_dealer) is ALWAYS complete - one row per store,
+  //    with counts Postgres worked out itself. Every headline number comes from
+  //    here, so the KPI row stays exact no matter how big the database gets.
+  //  - the individual vehicle rows are only needed for the one panel we build
+  //    in the browser ("You Have, They Don't"), and they may be capped.
+  var ownDealers  = d.dealers.filter(function (r) { return r.is_own_store === true; });
+  var compDealers = d.dealers.filter(function (r) { return r.is_own_store !== true; });
+  function unitsIn(rows) {
+    return rows.reduce(function (s, r) {
+      return s + (isNum(r.active_units) ? Number(r.active_units) : 0);
+    }, 0);
+  }
+  d.ownDealers   = ownDealers;
+  d.compDealers  = compDealers;
+  d.ownUnits     = unitsIn(ownDealers);
+  d.compUnits    = unitsIn(compDealers);
+
+  var own  = d.inventory.filter(function (r) { return r.is_own_store === true; });
+  var comp = d.inventory.filter(function (r) { return r.is_own_store !== true; });
+
+  // --- Header ------------------------------------------------------------
+  $("dealerName").textContent = CFG.dealershipName || "Competitive Inventory";
+  var lastScraped = null;
+  d.dealers.forEach(function (r) {
+    if (r.last_scraped_at && (!lastScraped || r.last_scraped_at > lastScraped)) {
+      lastScraped = r.last_scraped_at;
+    }
+  });
+  // Counted from the per-store report so the headline can never disagree with
+  // the KPI row underneath it.
+  $("headMeta").innerHTML =
+    "<b>" + num(d.ownUnits + d.compUnits) + "</b> active vehicles across <b>" +
+    num(d.dealers.length) + "</b> " + (d.dealers.length === 1 ? "store" : "stores");
+  $("headScraped").innerHTML = lastScraped
+    ? "Last scrape <b>" + esc(ago(lastScraped) || stamp(lastScraped)) + "</b>" +
+      '<span style="color:var(--ink-3)"> &middot; ' + esc(stamp(lastScraped)) + "</span>"
+    : '<span style="color:var(--ink-3)">Never scraped</span>';
+
+  // --- The whole database is empty ---------------------------------------
+  // This is a real day-one state and it deserves an answer, not five empty boxes.
+  if (d.inventory.length === 0 && d.dealers.length === 0) {
+    showBanner(
+      '<div class="banner note"><h3>The database is connected and completely empty</h3>' +
+      "<p>Good news: the connection works and the reports exist. There is simply no " +
+      "inventory in there yet, because the scraper has not run. In your terminal, " +
+      "with the virtual environment active:</p>" +
+      '<div class="detail">python -m scraper.run --all</div>' +
+      "<p style=\"margin-top:10px\">Then press Refresh up top. The first run takes a few " +
+      "minutes and fills every panel on this page except price cuts, which needs a " +
+      "second run on another day to have anything to compare against.</p></div>"
+    );
+  }
+
+  // --- No store is flagged as yours --------------------------------------
+  // Very likely on day one, and it silently breaks the two comparison panels,
+  // so we say it out loud instead of showing two mysteriously empty boxes.
+  if (d.dealers.length > 0 && ownDealers.length === 0) {
+    showBanner($("banner").innerHTML +
+      '<div class="banner note"><h3>No store is marked as yours yet</h3>' +
+      "<p>Every vehicle in the database currently belongs to a competitor, so the " +
+      "comparison panels have nothing to compare you against. In " +
+      "<code>config/dealers.yml</code>, set <code>is_own_store: true</code> on your own " +
+      "rooftop and scrape again. Everything else on this page still works.</p></div>");
+  }
+
+  // --- The row limit was hit ---------------------------------------------
+  if (d.inventoryTotal > d.inventory.length) {
+    showBanner($("banner").innerHTML +
+      '<div class="banner note"><h3>Showing the first ' + num(d.inventory.length) +
+      " of " + num(d.inventoryTotal) + " vehicles</h3>" +
+      "<p>The database has grown past what this page downloads in one go. The KPI " +
+      "counts and the panels built from the database's own reports are still exact; " +
+      "only the &ldquo;You Have, They Don't&rdquo; list is calculated in the browser " +
+      "and may be missing rows. Ask Claude Code to raise " +
+      "<code>INVENTORY_LIMIT</code> in <code>dashboard/index.html</code>.</p></div>");
+  }
+
+  renderKpis(d);
+  renderGaps(d, own, comp, ownDealers.length > 0);
+  renderPricePosition(d.priceCompare, d.ownUnits);
+  renderDrops(d.drops);
+  renderLots(d.dealers);
+}
+
+/* ---- 8.1 KPI ROW ---------------------------------------------------------
+   The situation at a glance, in the order a manager would ask for it.
+   -------------------------------------------------------------------------- */
+function renderKpis(d) {
+  // Days on lot is averaged per store in the database. To compare "you" against
+  // "them" we weight each store's average by how many units it has, otherwise a
+  // corner lot with four cars counts as much as a superstore with four hundred.
+  function weightedDays(rows) {
+    var units = 0, total = 0;
+    rows.forEach(function (r) {
+      if (isNum(r.avg_days_on_lot) && isNum(r.active_units)) {
+        units += Number(r.active_units);
+        total += Number(r.avg_days_on_lot) * Number(r.active_units);
+      }
+    });
+    return units ? total / units : null;
+  }
+  var ownDealers = d.ownDealers, compDealers = d.compDealers;
+  var ownDays  = weightedDays(ownDealers);
+  var compDays = weightedDays(compDealers);
+
+  // Only competitors' cuts count here. Your own markdowns are not intelligence.
+  var compDrops = d.drops.filter(function (r) { return r.is_own_store !== true; });
+  var liveDrops = compDrops.filter(function (r) { return r.is_active !== false; });
+
+  var daysSub, daysPill = "";
+  if (ownDays === null || compDays === null) {
+    daysSub = '<span class="mut">Needs both your store and a competitor</span>';
+  } else {
+    var gap = ownDays - compDays;
+    var cls = gap < 0 ? "good" : (gap > 0 ? "bad" : "mut");
+    var word = gap < 0 ? "faster" : (gap > 0 ? "slower" : "even");
+    daysPill = '<span class="pill ' + cls + '">' +
+      (gap === 0 ? "even" : days(Math.abs(gap)) + " days " + word) + "</span>";
+    daysSub = "vs <b>" + days(compDays) + "</b> for competitors &nbsp; " + daysPill;
+  }
+
+  var cards = [
+    {
+      label: "Your units",
+      value: num(d.ownUnits),
+      accent: true,
+      sub: ownDealers.length
+        ? esc(ownDealers.length === 1 ? (ownDealers[0].dealer_name || "your store")
+                                      : ownDealers.length + " rooftops")
+        : '<span class="mut">No store flagged as yours</span>'
+    },
+    {
+      label: "Competitor units",
+      value: num(d.compUnits),
+      sub: d.compUnits
+        ? "on " + num(compDealers.length) + (compDealers.length === 1 ? " lot" : " lots")
+        : '<span class="mut">Nothing scraped yet</span>'
+    },
+    {
+      label: "Stores tracked",
+      value: num(d.dealers.length),
+      sub: d.dealers.length
+        ? num(ownDealers.length) + " yours &middot; " + num(compDealers.length) + " competitors"
+        : '<span class="mut">Add stores in config/dealers.yml</span>'
+    },
+    {
+      label: "Your avg days on lot",
+      value: ownDays === null ? DASH : days(ownDays),
+      small: true,
+      sub: daysSub
+    },
+    {
+      label: "Price cuts caught",
+      value: num(compDrops.length),
+      small: true,
+      sub: compDrops.length
+        ? num(liveDrops.length) + " still listed"
+        : '<span class="mut">Needs a second day of data</span>'
+    }
+  ];
+
+  $("kpis").innerHTML = cards.map(function (c) {
+    return '<div class="kpi"><div class="label">' + esc(c.label) + "</div>" +
+      '<div class="value num' + (c.small ? " sm" : "") + (c.accent ? " accent" : "") +
+      '">' + c.value + "</div>" +
+      '<div class="sub">' + c.sub + "</div></div>";
+  }).join("");
+}
+
+/* ---- 8.2 THEY HAVE IT, YOU DON'T -----------------------------------------
+   Left: straight from v_market_gaps, the database's own report. Each row is a
+   make/model/trim the competition carries at least twice while you carry none.
+   Right: the mirror image, worked out here in the browser from the active
+   inventory - what you stock that nobody else on the list does. That is your
+   exclusive, and it is worth knowing before you discount it.
+   -------------------------------------------------------------------------- */
+function renderGaps(d, own, comp, haveOwnStore) {
+  var gaps = d.gaps || [];
+
+  if (gaps.length === 0) {
+    $("gapCountThem").textContent = "";
+    $("gapThem").innerHTML = d.compUnits === 0
+      ? emptyState("No competitor inventory yet",
+          "This list is built from what the competition has on the ground. Scrape at " +
+          "least one competitor store and it fills in immediately.",
+          "python -m scraper.run --all")
+      : emptyState("No gaps found",
+          "Every model and trim the competition stocks in volume, you stock too. " +
+          "That is a genuinely good position to be in &mdash; and it will change the " +
+          "next time one of them takes delivery of something new.");
+  } else {
+    var top = gaps.slice(0, 15);
+    $("gapCountThem").textContent = num(gaps.length) + " total";
+    $("gapThem").innerHTML =
+      '<div class="tablewrap"><table><thead><tr>' +
+      "<th></th><th>Vehicle</th>" +
+      '<th class="r">Their units</th><th class="r">Stores</th>' +
+      '<th class="r">Their avg price</th><th class="r">Yours</th>' +
+      "</tr></thead><tbody>" +
+      top.map(function (r, i) {
+        return "<tr>" +
+          '<td class="rank num">' + (i + 1) + "</td>" +
+          '<td class="strong">' + vehicleLabel(r, true) + "</td>" +
+          '<td class="r num" style="color:var(--bad);font-weight:600">' +
+            num(r.competitor_units) + "</td>" +
+          '<td class="r num">' + num(r.competitor_dealers) + "</td>" +
+          '<td class="r num">' + money(r.avg_competitor_price) + "</td>" +
+          '<td class="r num" style="color:' +
+            (Number(r.own_units) > 0 ? "var(--ink-2)" : "var(--ink-3)") + '">' +
+            num(r.own_units) + "</td>" +
+        "</tr>";
+      }).join("") +
+      "</tbody></table></div>" +
+      (gaps.length > top.length
+        ? '<div style="padding:10px 16px;font-size:12.5px;color:var(--ink-3);' +
+          'border-top:1px solid var(--line-soft)">Showing the top ' + top.length +
+          " of " + num(gaps.length) + " gaps, biggest first.</div>"
+        : "");
+  }
+
+  // The mirror: what you have that none of them do.
+  var theirKeys = {};
+  comp.forEach(function (r) {
+    theirKeys[[r.make, r.model, r.trim || ""].join("|")] = true;
+  });
+  var mine = {};
+  own.forEach(function (r) {
+    var key = [r.make, r.model, r.trim || ""].join("|");
+    if (theirKeys[key]) return;
+    if (!mine[key]) mine[key] = { make: r.make, model: r.model, trim: r.trim, units: 0 };
+    mine[key].units++;
+  });
+  var exclusive = Object.keys(mine).map(function (k) { return mine[k]; })
+    .sort(function (a, b) { return b.units - a.units; });
+
+  if (!haveOwnStore) {
+    $("gapCountYou").textContent = "";
+    $("gapYou").innerHTML = emptyState("Your store is not in the data yet",
+      "Mark your own rooftop with <code>is_own_store: true</code> in " +
+      "<code>config/dealers.yml</code>, scrape again, and this fills in.");
+  } else if (exclusive.length === 0) {
+    $("gapCountYou").textContent = "";
+    $("gapYou").innerHTML = emptyState("Nothing exclusive right now",
+      "Every model and trim on your lot is also sitting on somebody else's. " +
+      "That means you are competing on price and process, not on product.");
+  } else {
+    $("gapCountYou").textContent = num(exclusive.length) + " total";
+    $("gapYou").innerHTML =
+      '<div class="tablewrap"><table><thead><tr>' +
+      "<th>Vehicle</th>" +
+      '<th class="r">Your units</th></tr></thead><tbody>' +
+      exclusive.slice(0, 15).map(function (r) {
+        return "<tr>" +
+          '<td class="strong">' + vehicleLabel(r, true) + "</td>" +
+          '<td class="r num" style="color:var(--good);font-weight:600">' +
+            num(r.units) + "</td></tr>";
+      }).join("") +
+      "</tbody></table></div>";
+  }
+}
+
+/* ---- 8.3 PRICE POSITION --------------------------------------------------
+   A diverging bar chart, built from two coloured divs per row. price_gap comes
+   out of the database already calculated as YOUR average minus THEIRS, so a
+   positive number means you are asking more.
+   -------------------------------------------------------------------------- */
+function renderPricePosition(rows, ownCount) {
+  rows = (rows || []).filter(function (r) { return isNum(r.price_gap); });
+
+  if (rows.length === 0) {
+    $("priceCard").innerHTML = ownCount === 0
+      ? emptyState("Nothing to compare against yet",
+          "This panel needs your own store in the data. Set " +
+          "<code>is_own_store: true</code> on your rooftop in " +
+          "<code>config/dealers.yml</code> and scrape again.")
+      : emptyState("No head-to-head matches yet",
+          "This only lists model and trim combinations where you and a competitor " +
+          "both have a unit on the ground today. Add another competitor store to " +
+          "<code>config/dealers.yml</code>, or wait for the overlap to appear &mdash; " +
+          "it usually shows up as soon as two stores of the same brand are tracked.");
+    return;
+  }
+
+  // Sort by the size of the gap, biggest first, and scale every bar against the
+  // single biggest gap so the chart reads at a glance from across a room.
+  var sorted = rows.slice().sort(function (a, b) {
+    return Math.abs(Number(b.price_gap)) - Math.abs(Number(a.price_gap));
+  }).slice(0, 14);
+  var max = Math.max.apply(null, sorted.map(function (r) {
+    return Math.abs(Number(r.price_gap));
+  })) || 1;
+
+  var body = sorted.map(function (r) {
+    var gap = Number(r.price_gap);
+    var pct = Math.max(1.5, (Math.abs(gap) / max) * 48); // 48% = half the track
+    var over = gap > 0;
+    var tie = gap === 0;
+    var bar = tie ? ""
+      : '<div class="bar ' + (over ? "right" : "left") + '" style="width:' +
+        pct.toFixed(2) + '%"></div>';
+    return '<div class="barrow">' +
+      '<div class="barlabel" title="' + esc([r.make, r.model, r.trim].filter(Boolean).join(" ")) + '">' +
+        vehicleLabel(r, true) + "</div>" +
+      '<div class="bartrack">' + bar + "</div>" +
+      '<div class="barval num ' + (tie ? "tie" : over ? "over" : "under") + '">' +
+        (tie ? "even" : (over ? "+" : "-") + money(Math.abs(gap))) + "</div>" +
+    "</div>";
+  }).join("");
+
+  // A compact "who is cheaper more often" summary, because that is the sentence
+  // a manager repeats back to the room.
+  var cheaper = rows.filter(function (r) { return Number(r.price_gap) < 0; }).length;
+  var pricier = rows.filter(function (r) { return Number(r.price_gap) > 0; }).length;
+
+  $("priceCard").innerHTML =
+    '<div class="card-pad" style="border-bottom:1px solid var(--line-soft);' +
+      'display:flex;gap:26px;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2)">' +
+      "<div>You are cheaper on <b style=\"color:var(--good-text)\">" + num(cheaper) +
+        "</b> of " + num(rows.length) + " matchups</div>" +
+      "<div>Priced above the market on <b style=\"color:var(--bad-text)\">" +
+        num(pricier) + "</b></div>" +
+    "</div>" +
+    '<div class="bars">' +
+      '<div class="barlegend">' +
+        '<span><span class="swatch" style="background:var(--good)"></span>' +
+          "<b>You are cheaper</b></span>" +
+        '<span><span class="swatch" style="background:var(--bad)"></span>' +
+          "<b>You are asking more</b></span>" +
+      "</div>" +
+      body +
+      '<div class="baraxis"><div></div><div><span>cheaper</span>' +
+        "<span>market price</span><span>more expensive</span></div><div></div></div>" +
+    "</div>" +
+    (rows.length > sorted.length
+      ? '<div style="padding:12px 20px;font-size:12.5px;color:var(--ink-3);' +
+        'border-top:1px solid var(--line-soft)">Showing the ' + sorted.length +
+        " biggest gaps of " + num(rows.length) + " matchups.</div>"
+      : "");
+}
+
+/* ---- 8.4 COMPETITOR PRICE CUTS -------------------------------------------
+   THIS PANEL IS EMPTY ON DAY ONE AND THAT IS CORRECT. A price cut is the
+   difference between two observations, so the earliest it can ever appear is
+   the second scrape. The empty message says so, because "come back in a week"
+   is the actual pitch for keeping the scraper running.
+   -------------------------------------------------------------------------- */
+function renderDrops(rows) {
+  var all = (rows || []).filter(function (r) { return r.is_own_store !== true; });
+  var live = all.filter(function (r) { return r.is_active !== false; });
+
+  if (all.length === 0) {
+    $("dropCard").innerHTML = emptyState(
+      "No price cuts caught yet",
+      "This is expected, and it is not a bug. A price cut is the difference between " +
+      "two looks at the same car, so the earliest this panel can show anything is the " +
+      "second time the scraper runs. It fills in as the scraper runs day after day " +
+      "&mdash; come back in a week and this will be the first place you look.");
+    return;
+  }
+  if (live.length === 0) {
+    $("dropCard").innerHTML = emptyState(
+      "Every marked-down unit has since sold",
+      "We caught " + num(all.length) + " price " + (all.length === 1 ? "cut" : "cuts") +
+      ", but none of those vehicles are still listed. That is worth knowing on its " +
+      "own: their markdowns are working.");
+    return;
+  }
+
+  var top = live.slice(0, 15);
+  $("dropCard").innerHTML =
+    '<div class="tablewrap"><table><thead><tr>' +
+    "<th>Vehicle</th><th>Store</th>" +
+    '<th class="r">Was</th><th class="r">Now</th><th class="r">Cut</th>' +
+    '<th class="r">Held out</th><th class="r">Days on lot</th><th></th>' +
+    "</tr></thead><tbody>" +
+    top.map(function (r) {
+      var pct = isNum(r.price_drop_pct) ? num(r.price_drop_pct, 1) + "%" : DASH;
+      return "<tr>" +
+        '<td class="strong">' +
+          (r.year ? esc(r.year) + " " : "") + vehicleLabel(r, true) + "</td>" +
+        "<td>" + esc(r.dealer_name || r.dealer_key || DASH) + "</td>" +
+        '<td class="r num">' + money(r.original_price) + "</td>" +
+        '<td class="r num strong">' + money(r.current_price) + "</td>" +
+        '<td class="r num"><span class="pill bad">-' +
+          money(r.price_drop) + " &middot; " + pct + "</span></td>" +
+        '<td class="r num">' + (isNum(r.days_between) ? num(r.days_between) + "d" : DASH) + "</td>" +
+        '<td class="r num">' + (isNum(r.days_on_lot) ? num(r.days_on_lot) + "d" : DASH) + "</td>" +
+        '<td class="r">' + (r.listing_url
+          ? '<a class="listing" target="_blank" rel="noopener noreferrer" href="' +
+            esc(r.listing_url) + '">View</a>' : "") + "</td>" +
+      "</tr>";
+    }).join("") +
+    "</tbody></table></div>" +
+    '<div style="padding:11px 16px;font-size:12.5px;color:var(--ink-3);' +
+      'border-top:1px solid var(--line-soft)">' +
+      // "Showing the 11 biggest of 11" is technically true and reads like a bug
+      // from the back of a room. Only say "of N" when we are actually holding
+      // rows back.
+      (live.length > top.length
+        ? "Showing the " + top.length + " biggest of " + num(live.length) +
+          " live markdowns, deepest cut first."
+        : num(live.length) + " live " + (live.length === 1 ? "markdown" : "markdowns") +
+          ", deepest cut first.") +
+      (all.length > live.length
+        ? " " + num(all.length - live.length) +
+          (all.length - live.length === 1 ? " more has" : " more have") + " since sold."
+        : "") +
+    "</div>";
+}
+
+/* ---- 8.5 THE LOTS --------------------------------------------------------
+   The morning-glance scoreboard, one line per store. Your own store is marked
+   and pinned to the top so the eye lands on it first.
+   -------------------------------------------------------------------------- */
+function renderLots(rows) {
+  rows = rows || [];
+  if (rows.length === 0) {
+    $("lotCard").innerHTML = emptyState("No stores in the database yet",
+      "List the dealerships you want to watch in <code>config/dealers.yml</code> " +
+      "(yours included, with <code>is_own_store: true</code>), then run:",
+      "python -m scraper.run --all");
+    return;
+  }
+
+  var sorted = rows.slice().sort(function (a, b) {
+    if (!!a.is_own_store !== !!b.is_own_store) return a.is_own_store ? -1 : 1;
+    return Number(b.active_units || 0) - Number(a.active_units || 0);
+  });
+
+  $("lotCard").innerHTML =
+    '<div class="tablewrap"><table><thead><tr>' +
+    "<th>Store</th>" +
+    '<th class="r">Active units</th><th class="r">Avg MSRP</th>' +
+    '<th class="r">Avg asking price</th><th class="r">Avg days on lot</th>' +
+    "<th>Last scraped</th></tr></thead><tbody>" +
+    sorted.map(function (r) {
+      var mine = r.is_own_store === true;
+      var where = [r.dealer_city, r.dealer_state].filter(Boolean).join(", ");
+      return '<tr' + (mine ? ' style="background:var(--accent-soft)"' : "") + ">" +
+        '<td class="strong">' + esc(r.dealer_name || r.dealer_key || DASH) +
+          (mine ? ' <span class="pill mut" style="background:var(--accent);' +
+                  'color:#fff;margin-left:6px">Your store</span>' : "") +
+          (where ? '<span class="sub-line">' + esc(where) + "</span>" : "") + "</td>" +
+        '<td class="r num strong">' + num(r.active_units) + "</td>" +
+        '<td class="r num">' + money(r.avg_msrp) + "</td>" +
+        '<td class="r num">' + money(r.avg_selling_price) + "</td>" +
+        '<td class="r num">' + days(r.avg_days_on_lot) + "</td>" +
+        "<td>" + (r.last_scraped_at
+          ? esc(ago(r.last_scraped_at) || stamp(r.last_scraped_at)) +
+            '<span class="sub-line">' + esc(stamp(r.last_scraped_at)) + "</span>"
+          : '<span style="color:var(--ink-3)">' + DASH + "</span>") + "</td>" +
+      "</tr>";
+    }).join("") +
+    "</tbody></table></div>";
+}
+
+/* ==========================================================================
+   9. START
+   Check the config first. Everything after that depends on it.
+   ========================================================================== */
+
+function start() {
+  if (window.__CONFIG_LOAD_FAILED || !CFG) {
+    fatalConfig("The file dashboard/config.js was not found, or it did not set " +
+                "window.DASHBOARD_CONFIG.");
+    return;
+  }
+  if (!CFG.supabaseUrl || CFG.supabaseUrl.indexOf("PASTE") > -1 ||
+      CFG.supabaseUrl.indexOf("your-project") > -1) {
+    fatalConfig("supabaseUrl in dashboard/config.js is still the placeholder.");
+    return;
+  }
+  if (!CFG.supabaseAnonKey || CFG.supabaseAnonKey.indexOf("PASTE") > -1) {
+    fatalConfig("supabaseAnonKey in dashboard/config.js is still the placeholder.");
+    return;
+  }
+  // A small safety check worth having: the service_role key is decodable and
+  // says so. If someone pastes one in here, tell them loudly. That key in a
+  // browser is a give-anyone-full-write-access mistake.
+  try {
+    var payload = JSON.parse(atob(CFG.supabaseAnonKey.split(".")[1]));
+    if (payload && payload.role && payload.role !== "anon") {
+      fatalConfig('The key in dashboard/config.js is a "' + payload.role +
+        '" key, not the anon key. That key can write and delete anything in your ' +
+        "database, and anyone who opens this page can read it. Replace it right now " +
+        "with the anon / public key, and rotate the one you pasted in Supabase.",
+        "Stop - that is the wrong key");
+      return;
+    }
+  } catch (e) { /* Not a JWT we can read. Let the request itself decide. */ }
+
+  $("dealerName").textContent = CFG.dealershipName || "Competitive Inventory";
+  showSkeleton();
+  loadAll();
+}
+
+$("refreshBtn").addEventListener("click", loadAll);
+
+// Quietly re-read the database every 2 minutes. During a workshop this means a
+// scrape that finishes mid-session simply appears on screen.
+setInterval(function () {
+  if (!document.hidden && CFG) loadAll();
+}, 120000);
+
+start();
+</script>
+</body>
+</html>

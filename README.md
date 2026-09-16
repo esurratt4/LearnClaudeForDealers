@@ -21,6 +21,37 @@ never touches a login, a dealer portal, or a DMS.
 
 ---
 
+## What you end up looking at
+
+![The dashboard: gap analysis, price position, and competitor price cuts](dashboard/preview.png)
+
+The scraping is not the point. This is the point. Once there is inventory in the database,
+open the dashboard and you get four answers:
+
+- **They have it, you don't.** Model and trim the competition is stocking in real volume
+  while your lot has none. Every row is a car to consider ordering, or to go find at
+  auction.
+- **Price position.** Where you and a competitor both have the same trim on the ground,
+  who is cheaper and by how much.
+- **Competitor price cuts.** Units a competitor has marked down since the first time we
+  saw them, and how many days they sat on the original number before they blinked. They
+  did not announce that cut and they cannot hide it.
+- **The lots.** One line per store: units, average price, average days on lot.
+
+It needs no install — no npm, no build step. It is one HTML file:
+
+```bash
+python3 -m http.server 8000 --directory dashboard
+```
+
+Then open http://localhost:8000. See [dashboard/README.md](dashboard/README.md).
+
+The dashboard reads with Supabase's **anon** key, which can SELECT and nothing else. The
+scraper writes with the service_role key, which never touches a browser. That split is why
+`sql/schema.sql` sets up row level security the way it does.
+
+---
+
 ## Quickstart
 
 You need [Python 3.9+](https://www.python.org/downloads/) and a free
