@@ -1,0 +1,71 @@
+# =============================================================================
+# dealers.yml  --  who the scraper visits
+# =============================================================================
+#
+# This ships with a real, working example so the project does something useful
+# the moment you clone it. Try it first, then make it yours:
+#
+#     python -m scraper.run --list        # show who is configured
+#     python -m scraper.run --dealer laura --limit 5
+#
+# When you are ready, replace `own_store` below with YOUR store and swap these
+# competitors for the ones you actually lose deals to. The full explanation of
+# every field lives in config/dealers.example.yml -- read that one first.
+#
+# Reminder: spaces for indentation, never tabs.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# YOUR STORE  <- change this to your own dealership
+# -----------------------------------------------------------------------------
+own_store:
+  key: lighthouse
+  name: Lighthouse Buick GMC
+  url: https://www.lighthousegmc.com
+  city: Morton
+  state: IL
+  # platform is deliberately left out -- the scraper detects it from the site.
+
+
+# -----------------------------------------------------------------------------
+# COMPETITORS
+# -----------------------------------------------------------------------------
+# Three real stores, chosen because between them they run all three of the major
+# dealership website platforms. That is what makes them a good demo: the scraper
+# has to handle three completely different sites and still produce one tidy list
+# of vehicles.
+competitors:
+
+  # DealerOn site. `platform:` is intentionally absent so you can watch
+  # auto-detection work it out live.
+  - key: laura
+    name: Laura Buick GMC
+    url: https://www.laurabuickgmc.com
+    city: Collinsville
+    state: IL
+
+  # Dealer Inspire site. Also left blank on purpose -- same reason.
+  - key: ray-dennison
+    name: Ray Dennison Buick GMC
+    url: https://www.raydennisonbuickgmc.com
+    city: Pekin
+    state: IL
+
+  # Dealer.com site -- the one exception where you must spell things out.
+  #
+  # Dealer.com pages are built in the browser, so there is no inventory in the
+  # HTML to read; the scraper has to call the site's own inventory API, and that
+  # API refuses to answer without the store's internal account name (`site_id`).
+  # Auto-detection can tell you a site is Dealer.com, but it cannot invent that
+  # name, so both lines below are required.
+  #
+  # Finding a site_id for a new Dealer.com store: open the store's inventory
+  # page, view source, and search for "siteId" -- it is the value beside it.
+  - key: sk
+    name: SK Buick GMC
+    url: https://www.skbuickgmc.com
+    city: Springfield
+    state: IL
+    platform: dealer_com
+    site_id: skpontiacgmcinc

@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------------------
+# The outside libraries this project needs.
+#
+# Install them all with:   pip install -r requirements.txt
+#
+# ">=" means "this version or newer". Keep this list short on purpose — every
+# library you add is one more thing that can break on someone else's laptop.
+# ---------------------------------------------------------------------------
+
+# Downloads web pages. The workhorse of the scraper.
+requests>=2.31
+
+# Talks to your Supabase database (reads and writes the vehicles table).
+supabase>=2.0
+
+# Reads your .env file so your Supabase keys stay out of the code.
+python-dotenv>=1.0
+
+# A real headless Chrome browser. Only needed for sites that build their
+# inventory page with JavaScript (Dealer.com) or that block plain requests.
+# After pip install, run: python -m playwright install chromium
+playwright>=1.40
+
+# Reads config/dealers.yml — the file where you list your store and rivals.
+PyYAML>=6.0

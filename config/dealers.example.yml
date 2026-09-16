@@ -1,0 +1,116 @@
+# =============================================================================
+# dealers.yml  --  the only file most people ever need to edit
+# =============================================================================
+#
+# WHAT THIS IS
+#   Your address book. You list your own store, then the competitors you want to
+#   keep an eye on. The scraper visits each website, pulls down every vehicle,
+#   and saves it so you can compare inventory and pricing.
+#
+# HOW TO USE IT
+#   1. Make your own copy (the scraper reads dealers.yml, not this file):
+#
+#          cp config/dealers.example.yml config/dealers.yml
+#
+#   2. Open config/dealers.yml and replace the examples below with real stores.
+#   3. Check it worked:
+#
+#          python -m scraper.run --list
+#
+# THE ONE FORMATTING RULE
+#   YAML cares about indentation, and it hates tab characters. Use spaces only,
+#   and keep everything belonging to one dealer lined up exactly like the
+#   examples. If you get a "not valid YAML" error, indentation is the culprit
+#   99 times out of 100.
+#
+# HOW MUCH TO LIST
+#   You do NOT need every dealer in the state. Your own store plus the 2-3
+#   competitors you actually lose deals to is enough to get real value, and it
+#   keeps each run to a few minutes instead of an hour. Start small. You can
+#   always add more later.
+#
+# THE FIELDS
+#   key           REQUIRED. A short nickname for the store: lowercase, no spaces,
+#                 dashes instead ("laura", "my-store", "ray-dennison").
+#                 IMPORTANT: this is the label attached to that store's cars in
+#                 the database forever. If you change it later, the system treats
+#                 it as a brand-new store and the old price history is orphaned.
+#                 Pick one and leave it alone. Every key must be different.
+#   name          REQUIRED. The dealership's real name, spelled how you want it
+#                 to appear in reports.
+#   url           REQUIRED. The store's homepage, copied from your browser's
+#                 address bar, including the https:// part. No trailing slash
+#                 needed (we strip it for you either way).
+#   city / state  Where the store is. Used for "who is within 50 miles" style
+#                 reporting. State is the two-letter abbreviation.
+#   platform      OPTIONAL -- and usually best left out entirely. This is which
+#                 website software the store runs on. When you leave it blank the
+#                 scraper visits the site and figures it out by itself. Only fill
+#                 it in if auto-detection guesses wrong. Valid values:
+#                   dealeron | dealer_inspire | dealer_com | generic
+#   site_id       OPTIONAL. Only needed for `platform: dealer_com` stores, whose
+#                 inventory system will not answer without an internal account
+#                 name. There is no way to guess it, so a dealer.com store needs
+#                 both `platform:` and `site_id:` spelled out. See the note on
+#                 the SK example in the shipped dealers.yml for how to find it.
+#   makes         OPTIONAL. A list, if you only care about some of the brands a
+#                 store sells. Leave it out to scrape everything.
+#                   makes: ["GMC"]
+#   condition     OPTIONAL. "new" (the default) or "used".
+#
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# YOUR STORE
+# -----------------------------------------------------------------------------
+# There is only one of these, and it is not a list, so its lines are NOT preceded
+# by a dash. Everything the scraper finds here is flagged as yours, which is what
+# lets reports say "you have 4 AT4X in stock, they have 11".
+own_store:
+  key: my-store
+  name: My Dealership
+  url: https://www.mydealership.com
+  city: Peoria
+  state: IL
+  # platform: dealeron       # leave commented out -- it is auto-detected
+
+
+# -----------------------------------------------------------------------------
+# YOUR COMPETITORS
+# -----------------------------------------------------------------------------
+# This IS a list, so each store starts with a dash and a space. Everything else
+# about that store is indented underneath, lined up with the `key:` above it.
+competitors:
+
+  # A plain competitor. Platform left blank on purpose: auto-detected at run time.
+  - key: competitor-one
+    name: Competitor One
+    url: https://www.competitorone.com
+    city: Pekin
+    state: IL
+
+  - key: competitor-two
+    name: Competitor Two
+    url: https://www.competitortwo.com
+    city: Bloomington
+    state: IL
+
+  # A store that sells two brands when you only care about one.
+  # - key: competitor-three
+  #   name: Competitor Three Chevrolet GMC
+  #   url: https://www.competitorthree.com
+  #   city: Pontiac
+  #   state: IL
+  #   makes: ["GMC"]
+
+  # A Dealer.com store. These are the exception: both `platform` and `site_id`
+  # have to be written out, because auto-detection can recognise the software but
+  # cannot read the store's internal account name off the page.
+  # - key: competitor-four
+  #   name: Competitor Four Buick GMC
+  #   url: https://www.competitorfour.com
+  #   city: Springfield
+  #   state: IL
+  #   platform: dealer_com
+  #   site_id: competitorfourinc

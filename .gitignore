@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Files git should IGNORE (never upload to GitHub).
+#
+# If a file matches a line below, it stays on your computer only. This is how
+# we keep your Supabase password off the public internet.
+# ---------------------------------------------------------------------------
+
+# Your secrets. This is the important one.
+# .env holds your Supabase keys. Anyone with that file can read and delete
+# your whole database, so it must never leave your machine.
+.env
+.env.local
+.env.*.local
+
+# The Python "virtual environment" — a private copy of Python and the
+# libraries this project needs. It is thousands of files, it is rebuilt by
+# `pip install -r requirements.txt` in seconds, and it is specific to your
+# computer. No reason to upload it.
+venv/
+.venv/
+env/
+
+# Python's compiled cache. Generated automatically, meaningless to humans.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS Finder litter.
+.DS_Store
+
+# Editor settings that are yours, not the project's.
+.vscode/
+.idea/
+
+# Local scratch output (CSV exports, debug HTML dumps, logs).
+*.log
+/tmp/
+/out/
+
+# ---------------------------------------------------------------------------
+# NOTE: config/dealers.yml is deliberately NOT ignored.
+#
+# It ships with working example dealers and it is the file you edit to point
+# the scraper at your own store. It contains only public website addresses —
+# no passwords — so it is safe to commit, and committing it is what lets the
+# GitHub Action know which sites to scrape on a schedule.
+#
+# If you ever put something private in it (an internal URL, a partner's site
+# you would rather not publish), uncomment the next line to hide it from git:
+#
+# config/dealers.yml
+# ---------------------------------------------------------------------------
