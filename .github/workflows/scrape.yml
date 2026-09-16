@@ -1,0 +1,149 @@
+# ===========================================================================
+# WHAT THIS FILE IS
+#
+# This is a "GitHub Action" — a robot that runs this scraper for you on
+# GitHub's computers, on a schedule, whether or not your laptop is on.
+#
+# You do not run this file. GitHub reads it automatically because of where it
+# lives (.github/workflows/). Think of it as a recurring calendar appointment
+# that GitHub keeps on your behalf.
+#
+# BEFORE IT WILL WORK you must add two secrets to your repo:
+#   GitHub.com -> your repo -> Settings -> Secrets and variables -> Actions
+#   -> "New repository secret", twice:
+#       SUPABASE_URL                = same value as in your .env
+#       SUPABASE_SERVICE_ROLE_KEY   = same value as in your .env
+#   Secrets are write-only. Once saved, nobody (including you) can read them
+#   back through the website, and they never appear in the run logs.
+# ===========================================================================
+
+name: Daily Inventory Scrape
+
+# --- WHEN DOES THIS RUN? ---------------------------------------------------
+on:
+  schedule:
+    # "cron" is the standard way to write a repeating schedule.
+    # The five fields are: minute, hour, day-of-month, month, day-of-week.
+    # "30 12 * * *" = at 12:30, every day, every month, every weekday.
+    #
+    # IMPORTANT: the time is UTC, not your local time. 12:30 UTC is about
+    # 7:30am Central in summer, 6:30am Central in winter. Early morning is
+    # deliberate — you want last night's price changes on your desk before
+    # the sales meeting, and dealer websites are quiet at that hour.
+    - cron: "30 12 * * *"
+
+  # This second trigger puts a "Run workflow" button on the Actions tab so
+  # you can kick off a run by hand without waiting for tomorrow.
+  workflow_dispatch:
+    inputs:
+      dealer:
+        description: "One dealer key to scrape (leave blank to scrape all)"
+        required: false
+        default: ""
+      limit:
+        description: "Max vehicles per dealer (leave blank for no limit — use 10 to test)"
+        required: false
+        default: ""
+
+# --- WHAT IS THIS ALLOWED TO TOUCH? ----------------------------------------
+# Least privilege: this job only needs to read the code. It never pushes
+# commits, opens issues, or edits the repo. If this file were ever tampered
+# with, that limit contains the damage.
+permissions:
+  contents: read
+
+# --- DON'T LET TWO RUNS OVERLAP --------------------------------------------
+# If yesterday's run is somehow still going when today's starts, two copies
+# would scrape the same sites at once — double the traffic to your
+# competitors' servers, and two processes writing the same VIN rows.
+# This makes a new run wait rather than collide.
+concurrency:
+  group: inventory-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    # A fresh, empty Linux computer, created for this run and thrown away
+    # afterward. Nothing carries over between runs except what is in your
+    # database.
+    runs-on: ubuntu-latest
+
+    # Safety valve. If a site hangs, kill the job at 30 minutes instead of
+    # burning your free GitHub minutes all day.
+    timeout-minutes: 30
+
+    # ----------------------------------------------------------------------
+    # DESIGN NOTE — why one job instead of one job per dealer.
+    #
+    # GitHub can run a "matrix", i.e. a separate parallel job per dealer,
+    # which would be faster. We deliberately do not, because a matrix has to
+    # list its dealer keys HERE, in this YAML file. The moment you add a
+    # competitor to config/dealers.yml, the schedule would silently keep
+    # scraping the old list, and you would not find out for weeks.
+    #
+    # So: one job, `--all`, which reads config/dealers.yml at runtime. Adding
+    # a competitor means editing one file, and the schedule follows along.
+    # Slower, but it cannot drift out of sync with your config.
+    # ----------------------------------------------------------------------
+    steps:
+      # 1. Copy this repository onto the fresh machine.
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # 2. Install Python. Pinned to 3.11 so every run is identical; the code
+      #    is written to also work on 3.9 for older laptops.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          # Re-use the downloaded libraries between runs so this step takes
+          # seconds instead of a minute.
+          cache: "pip"
+
+      # 3. Install the libraries listed in requirements.txt.
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. Install a real Chrome browser, used for Dealer.com sites and as a
+      #    fallback when a site refuses a plain request.
+      #    "--with-deps" also installs the Linux system libraries Chrome needs,
+      #    which a bare Ubuntu machine does not have. Without it you get a
+      #    confusing "missing shared library" error at scrape time.
+      - name: Install the headless browser
+        run: python -m playwright install --with-deps chromium
+
+      # 5. The actual scrape.
+      - name: Run the scraper
+        env:
+          # This is how secrets get in. GitHub swaps in the real values at
+          # run time and masks them in the logs. The scraper reads them from
+          # the environment exactly as it reads your local .env.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # OPTIONAL third secret. Only add it if a site refuses the default
+          # browser identity and you found an agent string it accepts. If you
+          # never create this secret it arrives empty, and the scraper falls
+          # back to its default exactly as it does on your laptop.
+          SCRAPER_USER_AGENT: ${{ secrets.SCRAPER_USER_AGENT }}
+          # Passed through from the manual "Run workflow" form. On the daily
+          # schedule both are empty, which means "all dealers, no limit".
+          INPUT_DEALER: ${{ inputs.dealer }}
+          INPUT_LIMIT: ${{ inputs.limit }}
+        run: |
+          # Build the command up piece by piece depending on what was typed
+          # into the Run workflow form. Quoting matters here: without it, a
+          # blank input would turn into a stray empty argument.
+          ARGS=""
+          if [ -n "$INPUT_DEALER" ]; then
+            ARGS="--dealer $INPUT_DEALER"
+          else
+            ARGS="--all"
+          fi
+          if [ -n "$INPUT_LIMIT" ]; then
+            ARGS="$ARGS --limit $INPUT_LIMIT"
+          fi
+
+          echo "Running: python -m scraper.run $ARGS"
+          python -m scraper.run $ARGS
