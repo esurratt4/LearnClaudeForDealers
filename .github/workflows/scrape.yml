@@ -122,11 +122,9 @@ jobs:
           # the environment exactly as it reads your local .env.
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # OPTIONAL third secret. Only add it if a site refuses the default
-          # browser identity and you found an agent string it accepts. If you
-          # never create this secret it arrives empty, and the scraper falls
-          # back to its default exactly as it does on your laptop.
-          SCRAPER_USER_AGENT: ${{ secrets.SCRAPER_USER_AGENT }}
+          # There is deliberately no SCRAPER_USER_AGENT here. Leave it unset:
+          # setting it switches off the fallback that gets Dealer Inspire
+          # sites to answer (see CLAUDE.md).
           # Passed through from the manual "Run workflow" form. On the daily
           # schedule both are empty, which means "all dealers, no limit".
           INPUT_DEALER: ${{ inputs.dealer }}

@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-accent: #C2692A;
+  --color-accent-light: #D4793A;
+  --color-home: #2D7A74;
+  --color-comp: #8C7355;
+  --color-surface: #FAFAF9;
+  --color-frame: #EDE9E3;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background-color: var(--color-surface);
+  color: #18181B;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+
+.recharts-tooltip-wrapper { filter: drop-shadow(0 4px 12px rgb(0 0 0 / 0.08)); }
+.recharts-surface:focus, .recharts-wrapper:focus, .recharts-sector:focus, .recharts-rectangle:focus { outline: none; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* "backwards", not "both": a transform left in place after the animation would make
+   every position:fixed child (the filter dropdown's click-outside backdrop) cover only
+   its own box instead of the whole window. */
+.animate-fade-in { animation: fadeInUp 0.35s ease-out backwards; }
+
+@keyframes chipEnter {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-chip-enter { animation: chipEnter 0.15s ease-out backwards; }

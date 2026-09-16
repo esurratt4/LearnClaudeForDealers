@@ -98,9 +98,7 @@ _UA_HINT = (
     "    This site allow-lists which programs may read it, and neither the\n"
     "    default browser identity nor a headless browser is on its list.\n"
     "    What to do:\n"
-    "      - Set SCRAPER_USER_AGENT in your .env to an agent string this site\n"
-    "        accepts, then run again.\n"
-    "      - Or drop SCRAPER_WORKERS to 2 and retry; some blocks are rate-based.\n"
+    "      - Drop SCRAPER_WORKERS to 2 and retry; some blocks are rate-based.\n"
     "      - Or leave this competitor out. One unreadable site is not worth\n"
     "        stalling the rest of your market data over."
 )

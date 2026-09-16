@@ -6,7 +6,7 @@
 # the moment you clone it. Try it first, then make it yours:
 #
 #     python -m scraper.run --list        # show who is configured
-#     python -m scraper.run --dealer laura --limit 5
+#     python -m scraper.run --dealer laura --limit 10 --dry-run
 #
 # When you are ready, replace `own_store` below with YOUR store and swap these
 # competitors for the ones you actually lose deals to. The full explanation of

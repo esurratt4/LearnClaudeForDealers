@@ -433,9 +433,9 @@ def cmd_doctor():
                 ok = check_line(
                     exists,
                     "table '{0}' {1}".format(table, "exists" if exists else "is MISSING"),
-                    "open your Supabase project, click SQL Editor > New query, and\n"
-                    "run the setup SQL from the README. It creates all three tables\n"
-                    "and is safe to run twice.",
+                    "open your Supabase project, click SQL Editor > New query, paste\n"
+                    "everything in sql/schema.sql, and click Run. It creates all three\n"
+                    "tables and is safe to run twice.",
                 ) and ok
             # A table the code does not know about is not a failure, just noise.
             for table in sorted(tables):

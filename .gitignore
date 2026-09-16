@@ -33,7 +33,7 @@ __pycache__/
 .vscode/
 .idea/
 
-# Local scratch output (CSV exports, debug HTML dumps, logs).
+# Local scratch output (exports, debug HTML dumps, logs).
 *.log
 /tmp/
 /out/
@@ -62,3 +62,8 @@ __pycache__/
 #
 # dashboard/config.example.js IS committed. That is the template people copy.
 dashboard/config.js
+
+# The dashboard's source code installs its build tools here (npm install).
+# Hundreds of megabytes, rebuilt on demand, never committed. The BUILT site in
+# dashboard/ (index.html + assets/) IS committed, so nobody needs Node to run it.
+dashboard-src/node_modules/

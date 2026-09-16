@@ -12,9 +12,9 @@ guess at:
 - Did the store in the next town just drop $2,000 across their Sierra 1500s?
 - How many days did that trim take to move at their price, versus mine?
 
-It is built to be set up by an AI coding assistant. You clone it, open it with Claude Code,
-and say *"read this repo and set it up for me."* The assistant handles the terminal; it will
-ask you for your Supabase keys and your competitors' web addresses, and nothing else.
+It is built to be set up by Claude Code. You paste nine plain-English prompts, in order, and
+Claude handles the terminal. The only things you supply are your Supabase keys, your store
+and competitors' web addresses, and a few clicks in the Supabase and GitHub websites.
 
 **What it is not:** it reads public web pages only, the same ones any shopper can see. It
 never touches a login, a dealer portal, or a DMS.
@@ -23,7 +23,7 @@ never touches a login, a dealer portal, or a DMS.
 
 ## What you end up looking at
 
-![The dashboard: gap analysis, price position, and competitor price cuts](dashboard/preview.png)
+![The dashboard: your lot against every competitor, store by store (sample data)](dashboard/preview.png)
 
 The scraping is not the point. This is the point. Once there is inventory in the database,
 open the dashboard and you get four answers:
@@ -38,13 +38,14 @@ open the dashboard and you get four answers:
   did not announce that cut and they cannot hide it.
 - **The lots.** One line per store: units, average price, average days on lot.
 
-It needs no install — no npm, no build step. It is one HTML file:
+It is already built, so running it needs nothing but Python — no npm, no build step:
 
 ```bash
 python3 -m http.server 8000 --directory dashboard
 ```
 
-Then open http://localhost:8000. See [dashboard/README.md](dashboard/README.md).
+Then open http://localhost:8000. It reads your Supabase URL and anon key from
+`dashboard/config.js`. See [dashboard/README.md](dashboard/README.md).
 
 The dashboard reads with Supabase's **anon** key, which can SELECT and nothing else. The
 scraper writes with the service_role key, which never touches a browser. That split is why
@@ -54,53 +55,120 @@ scraper writes with the service_role key, which never touches a browser. That sp
 
 ## Quickstart
 
-You need [Python 3.9+](https://www.python.org/downloads/) and a free
-[Supabase](https://supabase.com) account.
+**Before you start:** a laptop with [Claude Code](https://claude.com/claude-code) open and
+logged in, and your browser logged in to [github.com](https://github.com) and
+[supabase.com](https://supabase.com) (both free). Python 3.9 or newer; Claude will tell you
+if it is missing.
 
-**1. Get the code and install it**
+Paste each prompt into Claude Code, one at a time, and let it finish before the next.
+Anything in [brackets] is yours to fill in.
+
+**1. Get the code**
+
+> Clone https://github.com/esurratt4/LearnClaudeForDealers onto my Desktop and open it.
+> Read CLAUDE.md and do the setup: create the Python virtual environment, install the
+> requirements, and install the Playwright browser. Stop when the install is done and tell
+> me. Don't ask me for any keys yet.
+
+**2. Tour the files**
+
+| Path | What it is |
+|---|---|
+| `config/dealers.yml` | Your store and your competitors |
+| `.env` | Your secret keys (created in step 6, never uploaded) |
+| `sql/schema.sql` | Builds your database |
+| `scraper/` | The code that reads dealer websites |
+| `dashboard/` | Your dashboard |
+| `CLAUDE.md` | The instructions Claude follows in this project |
+| `.github/workflows` | The daily schedule |
+
+**3. Create your Supabase project**
+
+On supabase.com, click **New project**, then:
+1. Pick your organization and name the project (e.g. `spy-then-sell`).
+2. Generate a database password and save it somewhere.
+3. Pick the region closest to you and click **Create new project**.
+4. Wait until it finishes setting up.
+
+**4. Build the tables**
+
+> Copy the contents of sql/schema.sql to my clipboard.
+
+In Supabase: **SQL Editor** > **New query** > paste > **Run**. If Supabase warns about
+destructive operations, confirm and run: the file only drops its own report views. You should
+see "Success. No rows returned.", and **Table Editor** now shows `vehicles`, `scraper_runs`
+and `price_history`.
+
+**5. Get your keys**
+
+In Supabase, **Project Settings**:
+- **Data API**: the **Project URL**. The address of your database.
+- **API Keys**: the **anon** key and the **service_role** key (click Reveal).
+
+The anon key is read-only and is what the dashboard uses. The service_role key has full
+write access and is what the scraper uses. Treat it like the key to the dealership: it only
+ever goes into Claude Code on your own laptop. Never email it, text it, or screenshot it.
+
+**6. Connect**
+
+> Here are my Supabase details. Project URL: [paste]. service_role key: [paste]. anon key:
+> [paste]. Put the URL and service_role key in .env, put the URL and anon key in the
+> dashboard config, then run the doctor and tell me if everything passes.
+
+Success: the doctor shows PASS lines, including "write access confirmed".
+
+**7. Add your dealership and competitors**
+
+> Set up config/dealers.yml. My store is [dealership name], [website], [city, state]. My
+> competitors are [name, website, city, state] and [name, website, city, state]. Then run
+> --detect and tell me what platform each site is on.
+
+**8. Test scrape**
+
+> Do a dry run on my store with a limit of 10 and tell me if the data looks right.
+
+**9. Real scrape**
+
+> Run the scraper on all my dealers with a limit of 10 and tell me how many vehicles were
+> found and saved.
+
+Then in Supabase, **Table Editor** > `vehicles`: your rows are there.
+
+**10. Open your dashboard**
+
+> Start the dashboard and give me the link to open.
+
+Open http://localhost:8000. Filter by dealer, make and model; see what competitors stock
+that you don't, where you sit on price, and who has cut prices.
+
+**11. Make it yours**
+
+Ask for anything. For example:
+
+> Add a chart to my dashboard showing which models sit the longest on my competitors' lots.
+
+**12. Run it every morning**
+
+> Create a private GitHub repo for this project under my account and push it. Then walk me
+> through adding SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as repository secrets and
+> turning on the Daily Inventory Scrape workflow.
+
+### Doing it by hand instead
+
+With the virtual environment active (`source venv/bin/activate`, Windows Git Bash
+`source venv/Scripts/activate`):
 
 ```bash
-git clone https://github.com/esurratt4/LearnClaudeForDealers.git
-cd LearnClaudeForDealers
-python3 -m venv venv && source venv/bin/activate    # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python -m playwright install chromium
+python -m scraper.run --doctor                                   # keys, connection, tables
+python -m scraper.run --detect                                   # platform of each site
+python -m scraper.run --dealer my-store --limit 10 --dry-run     # scrapes, saves nothing
+python -m scraper.run --all --limit 10                           # small real run
+python -m scraper.run --all                                      # the full run
+python3 -m http.server 8000 --directory dashboard                # dashboard at localhost:8000
 ```
 
-**2. Add your Supabase keys**
-
-```bash
-cp .env.example .env
-```
-
-Open `.env` and paste in your **Project URL** and **service_role key**. Both are in your
-Supabase dashboard under Project Settings → API Keys. This file stays on your machine — it is
-already excluded from git.
-
-**3. Create the tables**
-
-In Supabase, open **SQL Editor → New query**, paste the entire contents of `sql/schema.sql`,
-and hit Run. You should see "Success. No rows returned."
-
-**4. Point it at your stores**
-
-Edit `config/dealers.yml` — see below.
-
-**5. Check everything**
-
-```bash
-python -m scraper.run --doctor     # keys, connection, tables
-python -m scraper.run --detect     # what platform each site runs on
-```
-
-**6. Test, then run for real**
-
-```bash
-python -m scraper.run --dealer my-store --limit 10 --dry-run   # scrapes, saves nothing
-python -m scraper.run --all                                    # the real thing
-```
-
-Always do a `--dry-run` on a new dealer before letting it write.
+Keys go in `.env` (copy `.env.example`) and `dashboard/config.js` (copy
+`dashboard/config.example.js`). Always `--dry-run` a new dealer before letting it write.
 
 ---
 
@@ -202,7 +270,10 @@ database and ask in plain English.
 The repo includes a GitHub Action that runs the scrape daily at 12:30 UTC (about 7:30am
 Central) on GitHub's servers — your laptop can be closed.
 
-1. Push this repo to your own GitHub account.
+The easy way is step 12 of the Quickstart: Claude creates a private repo, pushes it, sets the
+secrets and turns the workflow on. By hand:
+
+1. Push this project to a private repo on your own GitHub account.
 2. Go to **Settings → Secrets and variables → Actions → New repository secret** and add two:
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
@@ -223,8 +294,8 @@ UTC.
 **"403 Forbidden" or the scrape returns nothing for one site.**
 The site is refusing automated requests. Lower `SCRAPER_WORKERS` in `.env` to `2`, wait a
 few minutes, and try again. The scraper automatically retries with a real browser, but some
-sites need the slower pace. Setting `SCRAPER_USER_AGENT` to your dealership name and an
-email address also helps — it makes the traffic identifiable rather than anonymous.
+sites need the slower pace. Leave `SCRAPER_USER_AGENT` unset: a custom name is exactly what
+those filters refuse.
 
 **"No site_id configured" on a Dealer.com site.**
 Dealer.com sites need an account ID that isn't in the URL. It's usually a lowercase,
@@ -242,7 +313,7 @@ whether you asked for `new` on a used-only lot. Then run `--detect` again — a 
 have changed website vendors, which happens more often than you'd think.
 
 **"My competitor's site isn't supported."**
-Four platforms cover most of the market, and a `generic` fallback handles many of the rest.
+Three platforms (DealerOn, Dealer Inspire and Dealer.com) cover most of the market, and a `generic` fallback handles many of the rest.
 If `--detect` says `generic` and the results come back empty, ask your AI assistant to write
 an adapter for it — the instructions and the required data format are spelled out in
 `CLAUDE.md`, and it's normally a 30-minute job.
