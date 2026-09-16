@@ -77,11 +77,11 @@ cp .env.example .env
 
 Then **ask the user for two values.** Tell them exactly where to look:
 
-> In your Supabase dashboard, open your project, click the gear icon (Project Settings),
-> then **API**. I need two things from that page:
-> 1. **Project URL** — starts with `https://` and ends in `.supabase.co`
-> 2. **service_role key** — under "Project API keys", click Reveal. It is a very long
->    string starting with `eyJ`.
+> In your Supabase dashboard, open your project and click the gear icon (Project Settings).
+> I need two things:
+> 1. **Project URL** — under **Data API**. Starts with `https://`, ends in `.supabase.co`.
+> 2. **service_role key** — under **API Keys**, click Reveal on `service_role`. A long
+>    string starting with `eyJ`. Not the `anon` key — that one cannot write.
 
 Write them into `.env` as `SUPABASE_URL=` and `SUPABASE_SERVICE_ROLE_KEY=`. No quotes, no
 spaces around the `=`.
@@ -142,7 +142,7 @@ and the config file parses. **This must pass before you go any further.** Do not
 a partial pass.
 
 **Failure modes:** "missing SUPABASE_URL" → step 4, check for a typo or a stray space.
-"Invalid API key" → they probably copied the anon key instead of service_role; ask again.
+"CANNOT WRITE" → they copied the anon key instead of service_role; ask again.
 "table not found" → step 5 did not actually run; go back and have them paste the SQL.
 
 ### 8. Detect each site's platform
@@ -282,8 +282,10 @@ one, decline and explain why in one sentence.
   is slow, accept that it is slow.
 - **Do not resell or redistribute the scraped data.** It is for the user's own competitive
   analysis. This is not a data product.
-- **Identify honestly.** `SCRAPER_USER_AGENT` in `.env` is there so a webmaster can contact
-  a human. Encourage the user to set it to their dealership name and an email address.
+- **Leave `SCRAPER_USER_AGENT` unset.** Do not suggest setting it. Setting it switches off
+  the fallback in `scraper/http.py` that gets Dealer Inspire sites to answer, and a custom
+  bot name is exactly what CDN bot filters refuse, so every Dealer Inspire competitor would
+  start returning zero vehicles.
 
 ---
 
