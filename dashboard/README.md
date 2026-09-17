@@ -15,6 +15,13 @@ From the project folder, in a terminal:
 python3 -m http.server 8000 --directory dashboard
 ```
 
+On Windows, `python3` usually does not exist (it opens the Microsoft Store instead), so
+use:
+
+```
+python -m http.server 8000 --directory dashboard
+```
+
 Open **http://localhost:8000** in your browser. Press Ctrl+C in the terminal to stop it.
 
 Serve it this way. Double-clicking `index.html` opens it as a `file://` page, and
@@ -33,7 +40,7 @@ and fill in:
 | Setting | Where it comes from |
 |---|---|
 | `supabaseUrl` | Supabase: Project Settings > Data API > Project URL, e.g. `https://abcdefghijklmnop.supabase.co` |
-| `supabaseAnonKey` | Supabase: Project Settings > API Keys > the **anon** key. Not the service_role key. |
+| `supabaseAnonKey` | Supabase: Project Settings > API Keys > **Legacy API keys** tab > the **anon** key (it starts with `eyJ`). Not the service_role key. |
 | `dealershipName` | The name at the top of the page. Leave it `""` to use your `own_store` name from `config/dealers.yml`. |
 
 In Claude Code you can just say: *"put the URL and anon key in the dashboard config."*
@@ -122,7 +129,9 @@ Ask Claude Code in plain English, for example:
 - "Show the top 50 rows in the gap analysis instead of 25."
 
 Claude edits the files in `dashboard-src/src/` and rebuilds. Rebuilding needs
-[Node.js](https://nodejs.org) (the LTS version, 20.19 or newer) on the laptop doing the change:
+[Node.js](https://nodejs.org) on the laptop doing the change. Vite needs
+**20.19 or newer, or 22.12 or newer** — 21.x and 22.0 to 22.11 look new enough and then
+fail the build, so take the current LTS:
 
 ```
 cd dashboard-src

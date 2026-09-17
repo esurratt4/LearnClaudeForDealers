@@ -27,10 +27,23 @@ not print `.env` or `dashboard/config.js` to the screen. Other people may be wat
 
 ## The setup flow
 
-Before PROMPT 1 the user has already, in their terminal: installed Claude Code, made an
-empty project folder (usually `~/spy-then-sell`), run
-`claude mcp add --transport http supabase https://mcp.supabase.com/mcp` inside it, and
-started you there with `claude --dangerously-skip-permissions`.
+Before PROMPT 1 the user has already, in their terminal, in this order: installed Claude
+Code; opened a **new** terminal window and checked `claude --version`, `git --version` and
+`python3 --version`; made an empty project folder (usually `~/spy-then-sell`) and `cd`'d
+into it; run `claude mcp add --transport http supabase https://mcp.supabase.com/mcp` inside
+that folder; and started you there with `claude --dangerously-skip-permissions` and logged
+in.
+
+Two consequences worth knowing:
+
+- **The Supabase MCP is registered per folder**, in the user's `~/.claude.json`, not in the
+  project folder. It survives a restart of Claude Code in the same folder, and it does not
+  follow them to a different folder.
+- **You inherit the PATH of the terminal that started you.** If a program is installed
+  while you are running (Python, Git, Node, `gh`), you will still not see it. Tell the user
+  to type `/exit`, close the terminal, open a new one, `cd` back into the project folder,
+  run `claude --dangerously-skip-permissions`, and send the prompt again. Re-running the
+  prompt in the same session will fail exactly the same way.
 
 The user sends numbered prompts, in this order, one at a time. Each section below is what
 to do for that prompt. **Do only what that prompt asks, then stop and report.** Do not run
@@ -110,10 +123,14 @@ not touch Supabase, do not edit any config.
 **Failure modes:**
 - `python3: command not found` (or Windows opens the Microsoft Store): no Python. Tell them
   to install Python 3.11 from python.org/downloads (on Windows, tick "Add python.exe to
-  PATH"), then wait for them. Python below 3.9 will not work; check with `python3 --version`.
+  PATH"), then **restart you** as described under "The setup flow" — `/exit`, new terminal,
+  `cd` back into the project folder, `claude --dangerously-skip-permissions` — and send
+  PROMPT 1 again. Retrying in this session will fail identically. Python below 3.9 will not
+  work; check with `python3 --version`.
 - `git: command not found`: on macOS run `xcode-select --install` and tell them to click
-  Install in the pop-up; on Windows tell them to install Git from
-  git-scm.com/downloads/win. Wait.
+  Install in the pop-up (it is a GUI dialog and a multi-minute download, so say that out
+  loud); on Windows tell them to install Git from git-scm.com/downloads/win. Then restart
+  the same way and send PROMPT 1 again.
 - `No module named venv` on Debian/Ubuntu: `sudo apt install python3-venv`.
 - `externally-managed-environment`: the venv was not active. Re-run with the activation.
 - Timeouts or SSL errors during install: usually a corporate network or VPN. Tell them to
@@ -132,31 +149,32 @@ commands in this repo" and stop.
 1. **Organization.** `list_organizations`. One organization: use it without asking. More
    than one: ask once which to use, listing them by name.
 2. **Already exists?** `list_projects`. If a project named `spy-then-sell` already exists in
-   that organization (an earlier attempt), reuse it: skip to step 5 and say so in one
+   that organization (an earlier attempt), reuse it: skip to step 4 and say so in one
    sentence. Never create a second one.
-3. **Cost.** `get_cost` with `type: "project"` and the organization id, then
-   `confirm_cost` with that amount. Their prompt is the go-ahead, so do not stop to ask. If
-   the cost is more than $0 (paid organizations bill new projects hourly), tell them the
-   amount and how it is billed in one sentence while you continue.
-4. **Create.** `create_project` with `name: "spy-then-sell"`, the organization id, the
-   `confirm_cost_id` from step 3, and the region nearest the user: infer it from the city or
-   state they mention, otherwise from the laptop's timezone (`date +%Z`, on Windows
-   `tzutil /g`). US East or Central: `us-east-1`; US Mountain or Pacific: `us-west-1`;
-   Canada: `ca-central-1`; UK and Europe: `eu-west-2`; Australia: `ap-southeast-2`. Do not
-   ask them to pick a region.
+3. **Create.** `create_project` takes exactly three arguments on the hosted server at
+   `mcp.supabase.com`: `name: "spy-then-sell"`, `organization_id`, and `region`. There is no
+   `confirm_cost_id`, and there are no `get_cost` or `confirm_cost` tools; do not go looking
+   for them. (If a future version of the server does publish them, call them first and pass
+   the resulting `confirm_cost_id`. Their prompt is the go-ahead either way, so never stop
+   to ask.) Pick the region nearest the user: infer it from the city or state they mention,
+   otherwise from the laptop's timezone (`date +%Z`, on Windows `tzutil /g`). US East or
+   Central: `us-east-1`; US Mountain or Pacific: `us-west-1`; Canada: `ca-central-1`; UK and
+   Europe: `eu-west-2`; Australia: `ap-southeast-2`. Do not ask them to pick a region.
+   - If the organization is on a paid plan, the new project bills hourly. Say the one
+     sentence and carry on; do not wait for an answer.
    - If it is refused because the free plan's active-project limit is reached:
      `list_projects`, show them their active projects by name, and ask which one to pause.
      `pause_project` on the one they choose (never one they did not name), then retry
      `create_project`. Never delete a project.
-5. **Wait.** Poll `get_project` about every 15 seconds until `status` is `ACTIVE_HEALTHY`
+4. **Wait.** Poll `get_project` about every 15 seconds until `status` is `ACTIVE_HEALTHY`
    (normally 1 to 3 minutes). Tell them once that it is setting up. If it is not healthy
    after 10 minutes, tell them in one sentence and keep checking.
-6. **Build the tables.** Read `sql/schema.sql` and call `apply_migration` with
+5. **Build the tables.** Read `sql/schema.sql` and call `apply_migration` with
    `name: "inventory_schema"` and the **entire file contents, unmodified**, as the query.
    The file's `drop view if exists` lines only replace its own report views and never touch
    data. If the migration errors, read the error, fix the cause, and apply again; do not
    edit or trim `schema.sql` to make it pass.
-7. **Confirm.** `list_tables` with `schemas: ["public"]`. `vehicles`, `scraper_runs` and
+6. **Confirm.** `list_tables` with `schemas: ["public"]`. `vehicles`, `scraper_runs` and
    `price_history` must all be there.
 
 Report in two sentences: the project `spy-then-sell` is ready (and its region), and the
@@ -214,7 +232,7 @@ example stores that ship with the repo; say those get replaced in the next step.
 - "CANNOT WRITE": the anon key went into `.env`. Ask for the service_role key again.
 - "table 'vehicles' is MISSING" (or another table): the schema is not in this project. Check
   the URL's ref matches `spy-then-sell`, then apply `sql/schema.sql` again yourself with
-  `apply_migration` (PROMPT 2 step 6) and re-run the doctor.
+  `apply_migration` (PROMPT 2 step 5) and re-run the doctor.
 - "Could not reach Supabase": wrong URL or incomplete key, or the project is still setting
   up or paused. Check with `get_project`; if paused, tell them in one sentence and restore
   it with `restore_project`.
@@ -295,13 +313,14 @@ the whole point.
 > "Run the scraper on all my dealers with a limit of 10. Then use the Supabase MCP to tell
 > me how many vehicles are saved for each dealer."
 
-1. **Dry-run the competitors first** in one command, and read the output the same way as
-   PROMPT 6 (repeat `--dealer` once per competitor):
+1. **Dry-run every dealer first**, their own store included, and read the output the same
+   way as PROMPT 6:
    ```bash
-   source venv/bin/activate && python -m scraper.run --dealer <competitor-1> --dealer <competitor-2> --limit 10 --dry-run
+   source venv/bin/activate && python -m scraper.run --all --limit 10 --dry-run
    ```
-   If a competitor's data comes back empty or broken, fix it, or leave that store out of
-   this run and say so.
+   Their own store is in there on purpose: PROMPT 6 may have been skipped, and nothing may
+   write for the first time without a dry run you have read. If a store's data comes back
+   empty or broken, fix it, or leave that store out of this run and say so.
 2. **Write for real:**
    ```bash
    source venv/bin/activate && python -m scraper.run --all --limit 10
@@ -336,8 +355,11 @@ python3 -m http.server 8000 --directory dashboard
 
 On Windows, use `python -m http.server 8000 --directory dashboard`. If port 8000 is already
 in use by an earlier copy of this server, leave that one running and reuse it. Confirm it
-answers (`curl -s -o /dev/null -w "%{http_code}" http://localhost:8000` returns 200), then
-give them the link:
+answers before giving them the link: `curl -s -o /dev/null -w "%{http_code}"
+http://localhost:8000` returns 200 on macOS, Linux and Git Bash. In PowerShell that `curl`
+is an alias for `Invoke-WebRequest` and those flags fail, so use
+`(Invoke-WebRequest http://localhost:8000 -UseBasicParsing).StatusCode` instead. Then give
+them the link:
 
 **http://localhost:8000**
 
@@ -358,10 +380,17 @@ key, and must never write. If the change needs data the existing views do not pr
 may check what is in the database with `execute_sql` (reads only), but do not change the
 schema for a chart.
 
-1. Check Node: `node --version`. It must be 20.19 or newer. If Node is missing or too old,
-   install the LTS version and tell the user in one sentence that you are doing so:
-   macOS with Homebrew `brew install node`; Windows `winget install OpenJS.NodeJS.LTS`. If
-   neither works, ask them to install the LTS version from nodejs.org and tell you when done.
+1. Check Node: `node --version`. Vite 7 and `@vitejs/plugin-react` require
+   `^20.19.0 || >=22.12.0`, so the version must be **20.19 or newer, or 22.12 or newer**.
+   Node 21.x and 22.0 through 22.11 look new enough and then fail the build; treat them as
+   too old. If Node is missing or in a bad band, install the LTS version and tell the user
+   in one sentence that you are doing so: Windows `winget install OpenJS.NodeJS.LTS`; macOS
+   `brew install node` **only if `brew --version` works** (a fresh Mac has no Homebrew, and
+   installing Homebrew mid-session is not worth the time). Otherwise ask them to install the
+   LTS version from nodejs.org and tell you when it is done — then `/exit`, have them open a
+   new terminal, `cd` back into the project folder, restart you with
+   `claude --dangerously-skip-permissions`, and pick up from here, because you cannot see a
+   Node that was installed after you started.
 2. Make the change in `dashboard-src/src/`, following the existing components and theme.
 3. Build: `cd dashboard-src && npm install && npm run build`, then `cd` back to the project
    folder. This rewrites `dashboard/index.html` and `dashboard/assets/` and never touches
@@ -379,15 +408,20 @@ The workflow is `.github/workflows/scrape.yml`. It runs `--all` (no limit) daily
 on GitHub's servers and reads `config/dealers.yml` from the repo, so that file must be
 committed.
 
-1. **GitHub CLI.** Check `gh --version`. If missing: macOS `brew install gh`, Windows
-   `winget install GitHub.cli`. Check `gh auth status`. If not logged in, `gh auth login`
-   needs the user's keyboard, so tell them, with this folder's real path filled in:
+1. **GitHub CLI.** Check `gh --version`. If missing: Windows `winget install GitHub.cli`;
+   macOS `brew install gh` **only if `brew --version` works**. If you cannot install `gh`,
+   do not stop — use the no-`gh` path in step 7 instead. Check `gh auth status`. If not
+   logged in, `gh auth login` needs the user's keyboard, so tell them, with this folder's
+   real path filled in:
    > Open a new terminal window, go to this folder (`cd <full path of this folder>`), and
    > run `gh auth login`. Choose GitHub.com, then HTTPS, then Yes, then "Login with a web
    > browser". Copy the code it shows, press Enter, paste the code in the browser page, and
-   > approve. Tell me when done.
+   > approve. Tell me when done. If it says `gh` is not recognized, tell me that instead.
 
-   Then run `gh auth setup-git`.
+   If they come back saying `gh` was not recognized, it is a PATH problem in their brand-new
+   terminal (this happens when you just installed `gh` through a package manager): give them
+   the full path to the binary (`which gh`, on Windows `where.exe gh`) to run instead, or
+   fall back to step 7. Once they are logged in, run `gh auth setup-git`.
 2. **Safety check before committing.** Run `git status --short` and
    `git check-ignore .env dashboard/config.js venv/` (it must print all three). `.env`,
    `dashboard/config.js`, `venv/` and `dashboard-src/node_modules/` must be ignored. If any
@@ -420,6 +454,25 @@ committed.
    completes, and report whether it passed; if it failed, read the log with
    `gh run view --log-failed`, fix the cause, and run it again. From now on it runs every
    morning at 12:30 UTC (about 7:30am Central in summer) with no laptop needed.
+7. **If `gh` is not available at all**, do the same thing through the browser rather than
+   giving up. Ask them to create the repo themselves (github.com, **New**, name it,
+   **Private**, **Create repository**) and paste you the address. Then:
+   ```bash
+   git remote rename origin workshop
+   git remote add origin <the address they gave you>
+   git push -u origin main
+   ```
+   Secrets have to be added by hand, because they need their browser. Do not print the
+   values into the chat. Copy one at a time to their clipboard instead — macOS
+   `grep '^SUPABASE_URL=' .env | cut -d= -f2- | tr -d '\r\n' | pbcopy`, Windows
+   `... | clip` — and tell them:
+   > In your new repo on github.com, click **Settings**, then **Secrets and variables**,
+   > then **Actions**, then **New repository secret**. Name the first one `SUPABASE_URL`,
+   > paste the value, and click Add secret. Do it again for `SUPABASE_SERVICE_ROLE_KEY`.
+   > Tell me when both are listed.
+
+   Then have them open the **Actions** tab, enable workflows if GitHub asks, click **Daily
+   Inventory Scrape**, then **Run workflow**, and set the limit to 10.
 
 ---
 

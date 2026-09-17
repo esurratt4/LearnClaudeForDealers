@@ -42,7 +42,7 @@ open the dashboard and you get four answers:
 It is already built, so running it needs nothing but Python — no npm, no build step:
 
 ```bash
-python3 -m http.server 8000 --directory dashboard
+python3 -m http.server 8000 --directory dashboard   # Windows: python -m http.server ...
 ```
 
 Then open http://localhost:8000. It reads your Supabase URL and anon key from
@@ -62,22 +62,49 @@ the last step. Python 3.9 or newer; Claude will tell you if it is missing.
 
 **0. Set up Claude Code** (in your terminal: Terminal on Mac, PowerShell on Windows)
 
-1. Install Claude Code.
+Do these in this order. The new terminal window in step 2 is not optional.
+
+1. **Install Claude Code.** Never put `sudo` in front of it — the installer refuses to run
+   that way.
    - Mac / Linux: `curl -fsSL https://claude.ai/install.sh | bash`
    - Windows: install [Git for Windows](https://git-scm.com/downloads/win) first, then
      `irm https://claude.ai/install.ps1 | iex`
 
-   Check it: `claude --version` prints a version number and "(Claude Code)".
-2. Make a folder for this project and go into it.
-   - Mac / Linux: `mkdir -p ~/spy-then-sell && cd ~/spy-then-sell`
-   - Windows: `mkdir $HOME\spy-then-sell; cd $HOME\spy-then-sell`
-3. Connect Supabase to Claude in this folder:
-   `claude mcp add --transport http supabase https://mcp.supabase.com/mcp`
-4. Start Claude in this folder: `claude --dangerously-skip-permissions`
+   Windows, if PowerShell says "running scripts is disabled on this system": use a normal
+   PowerShell window (not "Run as administrator") and try again; if it is still blocked, run
+   `Set-ExecutionPolicy -Scope Process Bypass` and paste the install command again.
+2. **Close that terminal window and open a brand new one.** The installer only puts `claude`
+   on the path of windows opened *after* it finishes, so in the window you installed from
+   you will get "command not found" even though the install worked. In the new window,
+   check all three:
 
-   The first time, log in in the browser if asked, then accept the warning. This flag lets
-   Claude run commands and change files in this folder without stopping to ask you each
-   time. Only use it in this project folder, and never with `sudo`.
+   ```bash
+   claude --version     # prints a version number and "(Claude Code)"
+   git --version
+   python3 --version    # Windows: python --version
+   ```
+
+   Anything that says not found, install it now (Git from
+   [git-scm.com](https://git-scm.com/downloads/win), or on Mac `xcode-select --install`;
+   Python 3.11 from [python.org/downloads](https://www.python.org/downloads/), ticking
+   "Add Python to PATH" on Windows), then open *another* new terminal window and check
+   again.
+3. **Make a folder for this project and go into it.**
+   - Mac / Linux: `mkdir -p ~/spy-then-sell && cd ~/spy-then-sell`
+   - Windows: `New-Item -ItemType Directory -Force $HOME\spy-then-sell | Out-Null; cd $HOME\spy-then-sell`
+4. **Connect Supabase to Claude in this folder:**
+   `claude mcp add --transport http supabase https://mcp.supabase.com/mcp`
+
+   It prints two lines and asks you nothing. It writes to Claude's own settings, not to your
+   folder, so the folder stays empty for step 1 below. You log in to Supabase itself in
+   step 3 below.
+5. **Start Claude and log in:** `claude --dangerously-skip-permissions`
+
+   The first time, pick a text style, choose "Claude account with subscription", log in in
+   the browser, and trust the folder. On the Bypass Permissions warning, press the down
+   arrow to "Yes, I accept" and press Enter — Enter on its own exits. This flag lets Claude
+   run commands and change files in this folder without stopping to ask you each time. Only
+   use it in this project folder, and never with `sudo`. Leave this window open.
 
 Then paste each prompt below into Claude Code, one at a time, and let it finish before the
 next. Anything in [brackets] is yours to fill in.
@@ -177,6 +204,7 @@ python -m scraper.run --dealer my-store --limit 10 --dry-run     # scrapes, save
 python -m scraper.run --all --limit 10                           # small real run
 python -m scraper.run --all                                      # the full run
 python3 -m http.server 8000 --directory dashboard                # dashboard at localhost:8000
+                                                                 # on Windows: python -m http.server ...
 ```
 
 Keys go in `.env` (copy `.env.example`) and `dashboard/config.js` (copy
