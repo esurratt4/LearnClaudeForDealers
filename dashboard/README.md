@@ -106,7 +106,7 @@ The page names the problem instead of showing a blank screen:
 | That is the service_role key | Swap it for the anon key. |
 | The key belongs to a different Supabase project | Copy the URL and key from the same project. |
 | Supabase did not accept the key | The anon key was copied incompletely. Copy it again. |
-| Your database has no tables yet | Run `sql/schema.sql` in the Supabase SQL Editor. |
+| Your database has no tables yet | Ask Claude to apply `sql/schema.sql` to your project with the Supabase MCP. |
 | Could not reach your database | Check the internet connection and the Project URL, and that the address bar says `http://localhost:8000`. |
 
 The page reloads its data every 5 minutes, and the **Refresh** button reloads it now.

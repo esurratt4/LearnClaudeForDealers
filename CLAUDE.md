@@ -14,9 +14,11 @@ dealership. Never paste a traceback at them. Read the error yourself, fix it you
 tell them in one plain sentence what happened. Never ask them to choose between technical
 options; pick the sane default and say what you picked.
 
-The only things you ask the user for are things outside the terminal: their Supabase keys,
-their dealership and competitor names and web addresses, clicks inside the Supabase or
-GitHub website, and logging in to GitHub. Everything else you do yourself.
+You do the database work yourself through the Supabase MCP. The user never opens the
+Supabase SQL Editor or Table Editor. The only things you ask the user for are things outside
+the terminal: authenticating the Supabase MCP (`/mcp`), copying their service_role key from
+one Supabase page, their dealership and competitor names and web addresses, and logging in
+to GitHub. Everything else you do yourself.
 
 **Never echo a key back.** When you confirm a key was saved, say "saved", not the value. Do
 not print `.env` or `dashboard/config.js` to the screen. Other people may be watching it.
@@ -25,134 +27,206 @@ not print `.env` or `dashboard/config.js` to the screen. Other people may be wat
 
 ## The setup flow
 
+Before PROMPT 1 the user has already, in their terminal: installed Claude Code, made an
+empty project folder (usually `~/spy-then-sell`), run
+`claude mcp add --transport http supabase https://mcp.supabase.com/mcp` inside it, and
+started you there with `claude --dangerously-skip-permissions`.
+
 The user sends numbered prompts, in this order, one at a time. Each section below is what
 to do for that prompt. **Do only what that prompt asks, then stop and report.** Do not run
 ahead into the next step; the user is following along at a set pace.
 
 If a prompt arrives out of order, check whether the earlier steps actually happened (the
-venv exists, `.env` has values, `--doctor` passes, `config/dealers.yml` holds their stores)
-and do the missing work first, saying so in one sentence.
+venv exists, the Supabase project and tables exist, `.env` has values, `--doctor` passes,
+`config/dealers.yml` holds their stores) and do the missing work first, saying so in one
+sentence.
 
 ### Running commands in this repo
 
-- Work from the project folder. After the clone it is `~/Desktop/LearnClaudeForDealers`
-  (on Windows, the Desktop may be under OneDrive: check `~/OneDrive/Desktop` if `~/Desktop`
-  is missing). Use that absolute path, because your working directory can reset between
-  commands.
-- **Every Python command runs inside the virtual environment**, and activation does not
-  persist between your shell calls. Prefix every command:
+- **The project folder is the folder you were started in** (for example `~/spy-then-sell`).
+  The code is cloned straight into it, so `CLAUDE.md`, `scraper/` and `sql/` sit at its top
+  level. Every path in this file is relative to that folder. Do not clone into a subfolder,
+  and do not work anywhere else. If your working directory resets, `cd` back to the project
+  folder first.
+- **Every Python command activates the virtual environment in the same shell call**, because
+  activation does not persist between calls:
   - macOS / Linux: `source venv/bin/activate && python -m scraper.run ...`
   - Windows (Git Bash): `source venv/Scripts/activate && python -m scraper.run ...`
+  - Windows (PowerShell): `venv\Scripts\activate; python -m scraper.run ...`
 
-  A "No module named ..." error almost always means this prefix was missing.
-- The scraper commands that exist are exactly: `--doctor`, `--list`, `--detect`,
-  `--dealer KEY`, `--limit N`, `--dry-run`, `--all`. Do not invent others.
+  A "No module named ..." error almost always means the activation was missing.
+- The scraper flags that exist are exactly: `--doctor`, `--list`, `--detect`,
+  `--dealer KEY` (repeatable), `--all`, `--limit N`, `--dry-run`. Do not invent others.
+- **Supabase MCP.** Its tools are named `mcp__supabase__<tool>` (for example
+  `mcp__supabase__list_projects`). If they are not available to you, or a call fails with an
+  authentication error, stop and tell the user:
+  > Supabase isn't connected to me yet. Type `/mcp`, press Enter, select **supabase**, choose
+  > **Authenticate**, log in to Supabase in the browser that opens, pick your organization,
+  > and approve. When it says Connected, send your prompt again.
+
+  If `/mcp` does not list supabase at all, the add command was not run in this folder. Tell
+  them to type `/exit`, run
+  `claude mcp add --transport http supabase https://mcp.supabase.com/mcp`, start
+  `claude --dangerously-skip-permissions` again, and authenticate as above. Never fall back
+  to asking them to paste SQL into the Supabase dashboard.
+- **Which Supabase project.** After PROMPT 2 the project is the one named `spy-then-sell`.
+  Its project ref is the subdomain of `SUPABASE_URL` in `.env` (`https://<ref>.supabase.co`)
+  once PROMPT 3 has written it, and is in `list_projects` before that. Use that ref for every
+  MCP call; never run SQL against a different project in their organization.
 
 ---
 
 ### PROMPT 1: Get the code
 
-> "Clone https://github.com/esurratt4/LearnClaudeForDealers onto my Desktop and open it.
-> Read CLAUDE.md and do the setup: create the Python virtual environment, install the
-> requirements, and install the Playwright browser. Stop when the install is done and tell
-> me. Don't ask me for any keys yet."
+> "Clone https://github.com/esurratt4/LearnClaudeForDealers into this folder. Read CLAUDE.md
+> and do the setup: create the Python virtual environment, install the requirements, and
+> install the Playwright browser. Tell me when it's done."
+
+From the project folder:
 
 ```bash
-cd ~/Desktop && git clone https://github.com/esurratt4/LearnClaudeForDealers.git
-cd ~/Desktop/LearnClaudeForDealers
+git clone https://github.com/esurratt4/LearnClaudeForDealers.git .
 python3 -m venv venv                     # Windows: python -m venv venv  (or py -3 -m venv venv)
 source venv/bin/activate && pip install -r requirements.txt
 source venv/bin/activate && python -m playwright install chromium
 ```
 
-If the folder already exists from an earlier attempt, do not clone again: use it, and run
-`git pull` if it has no local changes.
+- The trailing `.` clones into the current folder, not a subfolder.
+- If `git clone` refuses because the folder is not empty (a stray `.DS_Store`, or a
+  `.claude/` folder), clone without deleting anything:
+  `git init && git remote add origin https://github.com/esurratt4/LearnClaudeForDealers.git && git fetch origin && git checkout -t origin/main`.
+- If the code is already here from an earlier attempt (`CLAUDE.md` and `scraper/` exist),
+  do not clone again: run `git pull` if there are no local changes, and carry on with the
+  install.
+- If it ended up in a subfolder (`LearnClaudeForDealers/` inside the project folder), move
+  everything in it, hidden files and `.git` included, up into the project folder, remove the
+  empty subfolder, and carry on from the project folder. Do not send the user to a new
+  folder: the Supabase MCP is connected to this one.
 
 Confirm each step worked before the next. Then tell the user, in one or two sentences, that
-the code is on their Desktop and everything is installed. **Stop.** Do not create `.env`, do
-not ask for keys, do not edit any config.
+the code is in this folder and everything is installed. **Stop.** Do not create `.env`, do
+not touch Supabase, do not edit any config.
 
 **Failure modes:**
 - `python3: command not found` (or Windows opens the Microsoft Store): no Python. Tell them
   to install Python 3.11 from python.org/downloads (on Windows, tick "Add python.exe to
   PATH"), then wait for them. Python below 3.9 will not work; check with `python3 --version`.
 - `git: command not found`: on macOS run `xcode-select --install` and tell them to click
-  Install in the pop-up; on Windows tell them to install Git from git-scm.com. Wait.
+  Install in the pop-up; on Windows tell them to install Git from
+  git-scm.com/downloads/win. Wait.
 - `No module named venv` on Debian/Ubuntu: `sudo apt install python3-venv`.
-- `externally-managed-environment`: the venv was not active. Re-run with the prefix.
+- `externally-managed-environment`: the venv was not active. Re-run with the activation.
 - Timeouts or SSL errors during install: usually a corporate network or VPN. Tell them to
   switch to a phone hotspot or guest Wi-Fi and retry.
 - On Linux, install the browser with `python -m playwright install --with-deps chromium`.
 
-### PROMPT 2: Copy the database setup to the clipboard
+### PROMPT 2: Create the database
 
-> "Copy the contents of sql/schema.sql to my clipboard."
+> "Use the Supabase MCP to create a new project called spy-then-sell in my organization.
+> Wait until it's ready, then apply sql/schema.sql to it and confirm the vehicles,
+> scraper_runs and price_history tables exist."
 
-Copy the whole file, exactly, with the clipboard tool for their system:
+If the Supabase MCP tools are not available, give the `/mcp` instructions from "Running
+commands in this repo" and stop.
 
-- macOS: `pbcopy < sql/schema.sql`
-- Windows: `clip < sql/schema.sql`
-- Linux: `xclip -selection clipboard < sql/schema.sql` (or `xsel --clipboard --input < sql/schema.sql`)
+1. **Organization.** `list_organizations`. One organization: use it without asking. More
+   than one: ask once which to use, listing them by name.
+2. **Already exists?** `list_projects`. If a project named `spy-then-sell` already exists in
+   that organization (an earlier attempt), reuse it: skip to step 5 and say so in one
+   sentence. Never create a second one.
+3. **Cost.** `get_cost` with `type: "project"` and the organization id, then
+   `confirm_cost` with that amount. Their prompt is the go-ahead, so do not stop to ask. If
+   the cost is more than $0 (paid organizations bill new projects hourly), tell them the
+   amount and how it is billed in one sentence while you continue.
+4. **Create.** `create_project` with `name: "spy-then-sell"`, the organization id, the
+   `confirm_cost_id` from step 3, and the region nearest the user: infer it from the city or
+   state they mention, otherwise from the laptop's timezone (`date +%Z`, on Windows
+   `tzutil /g`). US East or Central: `us-east-1`; US Mountain or Pacific: `us-west-1`;
+   Canada: `ca-central-1`; UK and Europe: `eu-west-2`; Australia: `ap-southeast-2`. Do not
+   ask them to pick a region.
+   - If it is refused because the free plan's active-project limit is reached:
+     `list_projects`, show them their active projects by name, and ask which one to pause.
+     `pause_project` on the one they choose (never one they did not name), then retry
+     `create_project`. Never delete a project.
+5. **Wait.** Poll `get_project` about every 15 seconds until `status` is `ACTIVE_HEALTHY`
+   (normally 1 to 3 minutes). Tell them once that it is setting up. If it is not healthy
+   after 10 minutes, tell them in one sentence and keep checking.
+6. **Build the tables.** Read `sql/schema.sql` and call `apply_migration` with
+   `name: "inventory_schema"` and the **entire file contents, unmodified**, as the query.
+   The file's `drop view if exists` lines only replace its own report views and never touch
+   data. If the migration errors, read the error, fix the cause, and apply again; do not
+   edit or trim `schema.sql` to make it pass.
+7. **Confirm.** `list_tables` with `schemas: ["public"]`. `vehicles`, `scraper_runs` and
+   `price_history` must all be there.
 
-Do not print the file. Then tell them:
-
-> It's on your clipboard. In Supabase, click **SQL Editor** in the left sidebar, then
-> **New query**, paste, and click **Run**. If Supabase warns about a destructive operation,
-> confirm and run it: the file only drops its own report views and never touches data.
-> You should see "Success. No rows returned." In **Table Editor** you'll now see
-> `vehicles`, `scraper_runs` and `price_history`.
-
-Nothing to verify from the terminal yet: the doctor in PROMPT 3 checks the tables. If no
-clipboard tool works, open `sql/schema.sql` in their default text editor (`open` on macOS,
-`start` on Windows) and tell them to select all, copy, and paste it into Supabase.
+Report in two sentences: the project `spy-then-sell` is ready (and its region), and the
+three tables exist. **Stop.** Do not fetch keys or write `.env` yet.
 
 ### PROMPT 3: Connect the keys
 
-> "Here are my Supabase details. Project URL: [paste]. service_role key: [paste]. anon key:
-> [paste]. Put the URL and service_role key in .env, put the URL and anon key in the dashboard
-> config, then run the doctor and tell me if everything passes."
+> "Get my spy-then-sell project URL and legacy anon key from the Supabase MCP. Put the URL
+> in .env, and the URL and anon key in the dashboard config. Then give me the direct link
+> to the page where I copy my service_role key."
 
-1. `cp .env.example .env` (skip if `.env` exists), then set these two lines in `.env`, with no
-   quotes and no spaces around `=`:
-   ```
-   SUPABASE_URL=https://<ref>.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=eyJ...
-   ```
-   Strip any trailing slash or `/rest/v1` from the URL. Leave every other line alone.
-2. `cp dashboard/config.example.js dashboard/config.js` (skip if it exists), then set
-   `supabaseUrl` to the URL and `supabaseAnonKey` to the anon key. Set `dealershipName` only
-   if you already know their store name; otherwise leave it `""` for PROMPT 4 to fill.
-3. Before running anything, check the keys are not swapped. Both classic keys are JWTs; the
-   middle section, base64-decoded, contains `"role":"service_role"` or `"role":"anon"`. If
-   they are swapped, swap them yourself and say so. Never put the service_role key in
-   `dashboard/config.js`: it would be readable by anyone who opens the page.
-4. Run `python -m scraper.run --doctor` (with the venv prefix).
+1. `list_projects` to find the `spy-then-sell` project id (its ref). Then `get_project_url`
+   and `get_publishable_keys` for it.
+2. **Use the legacy anon key**: the one named `anon` whose value starts with `eyJ`. Not an
+   `sb_publishable_` key; the dashboard and scraper expect the legacy keys. If no `eyJ` anon
+   key comes back, tell them to open the link in step 5, click the **Legacy API keys** tab,
+   and copy the **anon** key for you too.
+3. `cp .env.example .env` (skip if `.env` exists), then set `SUPABASE_URL=` to the project
+   URL: no quotes, no spaces around `=`, no trailing slash or `/rest/v1`. Leave every other
+   line alone, including the placeholder `SUPABASE_SERVICE_ROLE_KEY` line.
+4. `cp dashboard/config.example.js dashboard/config.js` (skip if it exists), then set
+   `supabaseUrl` to the URL and `supabaseAnonKey` to the anon key. Leave `dealershipName`
+   as `""` (PROMPT 5 fills it).
+5. Give them the direct link, with their real ref filled in:
+
+   **https://supabase.com/dashboard/project/<ref>/settings/api-keys**
+
+   and tell them:
+   > Open that link, click the **Legacy API keys** tab, find **service_role**, click
+   > **Reveal**, then **Copy**. Paste it back to me in your next message. It starts with
+   > `eyJ`.
+
+Do not run the doctor yet; it needs the service_role key. **Stop.**
+
+### PROMPT 4: Save the service_role key and run the doctor
+
+> "Here is my service_role key: [paste]. Put it in .env and run the doctor."
+
+1. Check it is the right key before saving. A legacy key is a JWT: the middle section,
+   base64-decoded, contains `"role":"service_role"`. If it says `"role":"anon"`, or it
+   starts with `sb_`, do not save it: tell them it is the wrong key and repeat the
+   PROMPT 3 step 5 instructions (Legacy API keys tab, **service_role**, not anon).
+2. Set `SUPABASE_SERVICE_ROLE_KEY=` in `.env` to the key: no quotes, no spaces. Do not
+   print it, do not repeat it in your reply, do not `cat .env`. **Never put it in
+   `dashboard/config.js`**: that file is readable by anyone who opens the page.
+3. Run `python -m scraper.run --doctor` (with the venv activation).
 
 Report in plain words. Success is every check in sections 1-3 showing PASS, including
-**"write access confirmed"**, and the last line reading **"RESULT: ready to scrape."** Section 4
-(browser) should also pass after PROMPT 1. The
-dealer list it reports is the example stores that ship with the repo; say those get
-replaced in the next step.
+**"write access confirmed"**, and the last line reading **"RESULT: ready to scrape."**
+Section 4 (browser) should also pass after PROMPT 1. The dealer list it reports is the
+example stores that ship with the repo; say those get replaced in the next step.
 
 **Failure modes:**
 - "SUPABASE_URL is not set" or "No Supabase key is set": typo or stray space in `.env`. Fix it.
 - "CANNOT WRITE": the anon key went into `.env`. Ask for the service_role key again.
-- "table 'vehicles' is MISSING" (or another table): the SQL did not run in this project. Copy it to the clipboard again (PROMPT 2) and
-  have them paste and Run it, then re-run the doctor.
-- "Could not reach Supabase": wrong URL, incomplete key, or the project is still setting up
-  or paused. Have them check the project's home page in Supabase.
-- If they pasted keys starting with `sb_publishable_` / `sb_secret_` and the doctor fails on
-  the key, ask for the `anon` and `service_role` keys instead: in Project Settings > API
-  Keys they are under the **Legacy API Keys** tab and both start with `eyJ`.
+- "table 'vehicles' is MISSING" (or another table): the schema is not in this project. Check
+  the URL's ref matches `spy-then-sell`, then apply `sql/schema.sql` again yourself with
+  `apply_migration` (PROMPT 2 step 6) and re-run the doctor.
+- "Could not reach Supabase": wrong URL or incomplete key, or the project is still setting
+  up or paused. Check with `get_project`; if paused, tell them in one sentence and restore
+  it with `restore_project`.
 
 **Never commit `.env` or `dashboard/config.js`.** Both are in `.gitignore`; do not remove
 them from it and never `git add -f` them.
 
-### PROMPT 4: Add the dealership and competitors
+### PROMPT 5: Add the dealership and competitors
 
-> "Set up config/dealers.yml. My store is [dealership name], [website], [city, state]. My competitors
-> are [name, website, city, state] and [name, website, city, state]. Then run --detect and
-> tell me what platform each site is on."
+> "Set up config/dealers.yml. My store is [dealership name], [website], [city, state]. My
+> competitors are [name, website, city, state] and [name, website, city, state]. Then run
+> --detect and tell me what platform each site is on."
 
 Rewrite `config/dealers.yml` from scratch with only their stores. The shipped file holds
 example stores that are not theirs; none of them stay.
@@ -193,16 +267,16 @@ Run `python -m scraper.run --detect` and show them a short plain list: store, pl
   in the inventory page's source or network requests (usually the dealership's legal name,
   lowercase, run together, e.g. `skpontiacgmcinc`). Then set both `platform: dealer_com` and
   `site_id:` on that store.
-- **`generic`** is not an error yet. PROMPT 5 or 6 will show whether it pulls real data; if
+- **`generic`** is not an error yet. PROMPT 6 or 7 will show whether it pulls real data; if
   it does not, see "When a site is on an unrecognised platform" below.
 - A site that fails to load: check the URL opens, and ask the user to confirm it if not.
 
-### PROMPT 5: Test scrape
+### PROMPT 6: Test scrape
 
 > "Do a dry run on my store with a limit of 10 and tell me if the data looks right."
 
 ```bash
-python -m scraper.run --dealer <own_store key> --limit 10 --dry-run
+source venv/bin/activate && python -m scraper.run --dealer <own_store key> --limit 10 --dry-run
 ```
 
 `--dry-run` scrapes for real and writes nothing. Read the sample table and field-fill
@@ -216,45 +290,54 @@ that nothing was saved yet.
 added later. A broken adapter that writes rows of nulls poisons the price history that is
 the whole point.
 
-### PROMPT 6: Real scrape
+### PROMPT 7: Real scrape
 
-> "Run the scraper on all my dealers with a limit of 10 and tell me how many vehicles were
-> found and saved."
+> "Run the scraper on all my dealers with a limit of 10. Then use the Supabase MCP to tell
+> me how many vehicles are saved for each dealer."
 
-First dry-run the competitors in one command, and read the output the same way as PROMPT 5
-(repeat `--dealer` once per competitor):
+1. **Dry-run the competitors first** in one command, and read the output the same way as
+   PROMPT 6 (repeat `--dealer` once per competitor):
+   ```bash
+   source venv/bin/activate && python -m scraper.run --dealer <competitor-1> --dealer <competitor-2> --limit 10 --dry-run
+   ```
+   If a competitor's data comes back empty or broken, fix it, or leave that store out of
+   this run and say so.
+2. **Write for real:**
+   ```bash
+   source venv/bin/activate && python -m scraper.run --all --limit 10
+   ```
+   Read the SUMMARY table: found, added, updated per store, and any failures.
+3. **Count what is saved** with `execute_sql` on the `spy-then-sell` project:
+   ```sql
+   select dealer_key,
+          count(*) as vehicles,
+          count(*) filter (where is_active) as active
+   from public.vehicles
+   group by dealer_key
+   order by dealer_key;
+   ```
+   This is a read. Never run `delete`, `update` or `truncate` here.
 
-```bash
-python -m scraper.run --dealer <competitor-1> --dealer <competitor-2> --limit 10 --dry-run
-```
+Report one plain line per store, using the store's name rather than its key: vehicles saved
+in the database, plus the total. If a store failed or saved 0, say which one in one
+sentence, then fix it (URL, `site_id`, or platform) and re-run just that store with
+`--dealer KEY --limit 10`, and count again.
 
-If a competitor's data comes back empty or broken, fix it or leave that store out of this
-run and say so. Then write for real:
-
-```bash
-python -m scraper.run --all --limit 10
-```
-
-This writes to their Supabase. Read the SUMMARY table and report one line per store plus the
-total: found, added, updated. Tell them to open Supabase > **Table Editor** > `vehicles` to
-see the rows. If a store failed or found 0, say which one in one sentence, then fix it (URL,
-`site_id`, or platform) and re-run just that store with `--dealer KEY --limit 10`.
-
-### PROMPT 7: Open the dashboard
+### PROMPT 8: Open the dashboard
 
 > "Start the dashboard and give me the link to open."
 
-The dashboard in `dashboard/` is already built. Run this **in the background** so it keeps
-serving while the conversation continues:
+The dashboard in `dashboard/` is already built. Run this **in the background** from the
+project folder, so it keeps serving while the conversation continues:
 
 ```bash
 python3 -m http.server 8000 --directory dashboard
 ```
 
-On Windows, use `python -m http.server 8000 --directory dashboard`. Run it from the project
-folder. If port 8000 is already in use by an earlier copy of this server, leave that one
-running and reuse it. Confirm it answers (`curl -s -o /dev/null -w "%{http_code}"
-http://localhost:8000` returns 200), then give them the link:
+On Windows, use `python -m http.server 8000 --directory dashboard`. If port 8000 is already
+in use by an earlier copy of this server, leave that one running and reuse it. Confirm it
+answers (`curl -s -o /dev/null -w "%{http_code}" http://localhost:8000` returns 200), then
+give them the link:
 
 **http://localhost:8000**
 
@@ -263,7 +346,7 @@ that clicking a bar or a row filters too. If the page shows a settings or key me
 instead of data, it names the problem: fix `dashboard/config.js` and tell them to reload.
 Price cuts and days on lot fill in once the scraper has run on more than one day.
 
-### PROMPT 8: Make the dashboard theirs
+### PROMPT 9: Make the dashboard theirs
 
 > Example: "Add a chart to my dashboard showing which models sit the longest on my
 > competitors' lots."
@@ -272,23 +355,26 @@ They can ask for anything. The source is in `dashboard-src/src/` (React + Vite);
 `dashboard/` holds only the built result, so **never hand-edit `dashboard/index.html` or
 `dashboard/assets/`**. `dashboard/README.md` maps which file holds which panel. Every
 database read is in `dashboard-src/src/lib/data.jsx`; the dashboard only reads, with the anon
-key, and must never write.
+key, and must never write. If the change needs data the existing views do not provide, you
+may check what is in the database with `execute_sql` (reads only), but do not change the
+schema for a chart.
 
 1. Check Node: `node --version`. It must be 20.19 or newer. If Node is missing or too old,
    install the LTS version and tell the user in one sentence that you are doing so:
    macOS with Homebrew `brew install node`; Windows `winget install OpenJS.NodeJS.LTS`. If
    neither works, ask them to install the LTS version from nodejs.org and tell you when done.
 2. Make the change in `dashboard-src/src/`, following the existing components and theme.
-3. Build: `cd dashboard-src && npm install && npm run build`. This rewrites
-   `dashboard/index.html` and `dashboard/assets/` and never touches `config.js`.
-4. Fix any build error yourself. Make sure the server from PROMPT 7 is still running, then
+3. Build: `cd dashboard-src && npm install && npm run build`, then `cd` back to the project
+   folder. This rewrites `dashboard/index.html` and `dashboard/assets/` and never touches
+   `config.js`.
+4. Fix any build error yourself. Make sure the server from PROMPT 8 is still running, then
    tell them to reload http://localhost:8000 and where to find the new chart.
 
-### PROMPT 9: Run it every morning
+### PROMPT 10: Run it every morning
 
-> "Create a private GitHub repo for this project under my account and push it. Then walk me
-> through adding SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as repository secrets and turning
-> on the Daily Inventory Scrape workflow."
+> "Create a private GitHub repo for this project under my account and push it. Add
+> SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as repository secrets, turn on the Daily
+> Inventory Scrape workflow, and start one test run."
 
 The workflow is `.github/workflows/scrape.yml`. It runs `--all` (no limit) daily at 12:30 UTC
 on GitHub's servers and reads `config/dealers.yml` from the repo, so that file must be
@@ -296,18 +382,20 @@ committed.
 
 1. **GitHub CLI.** Check `gh --version`. If missing: macOS `brew install gh`, Windows
    `winget install GitHub.cli`. Check `gh auth status`. If not logged in, `gh auth login`
-   needs the user's keyboard, so tell them:
-   > Open a new Terminal window (on Windows, Git Bash) and run `gh auth login`. Choose
-   > GitHub.com, then HTTPS, then Yes, then "Login with a web browser". Copy the code it
-   > shows, press Enter, paste the code in the browser page, and approve. Tell me when done.
+   needs the user's keyboard, so tell them, with this folder's real path filled in:
+   > Open a new terminal window, go to this folder (`cd <full path of this folder>`), and
+   > run `gh auth login`. Choose GitHub.com, then HTTPS, then Yes, then "Login with a web
+   > browser". Copy the code it shows, press Enter, paste the code in the browser page, and
+   > approve. Tell me when done.
 
    Then run `gh auth setup-git`.
-2. **Safety check before committing.** Run `git status --short` and `git check-ignore .env
-   dashboard/config.js venv/` (it must print all three). `.env`, `dashboard/config.js`, `venv/` and
-   `dashboard-src/node_modules/` must be ignored. If any would be committed, stop and fix
-   `.gitignore` first. Never `git add -f`.
+2. **Safety check before committing.** Run `git status --short` and
+   `git check-ignore .env dashboard/config.js venv/` (it must print all three). `.env`,
+   `dashboard/config.js`, `venv/` and `dashboard-src/node_modules/` must be ignored. If any
+   would be committed, stop and fix `.gitignore` first. Never `git add -f`. Check
+   `config/dealers.yml` holds nothing private.
 3. **Commit** their changes (their `config/dealers.yml`, and any dashboard changes from
-   PROMPT 8): `git add -A && git commit -m "Set up my dealers"`. If git asks for a name and
+   PROMPT 9): `git add -A && git commit -m "Set up my dealers"`. If git asks for a name and
    email, set them for this repo only with `git config user.name` / `git config user.email`,
    using their GitHub name and their GitHub noreply address from `gh api user`.
 4. **Create and push.** The clone's `origin` points at the workshop repo, which they cannot
@@ -323,19 +411,16 @@ committed.
    grep '^SUPABASE_SERVICE_ROLE_KEY=' .env | cut -d= -f2- | tr -d '\r\n' | gh secret set SUPABASE_SERVICE_ROLE_KEY
    gh secret list
    ```
-   `gh secret list` must show exactly `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Then
-   show them where these live: their repo on github.com > **Settings** > **Secrets and
-   variables** > **Actions**. If they want to add them by hand instead, walk them through
-   **New repository secret** twice there, with the names above and the values from `.env`
-   (open `.env` in their text editor for them rather than printing it). Do not create a
-   `SCRAPER_USER_AGENT` secret. Only create secrets by hand if `gh secret set` fails.
-6. **Turn on the workflow.** Run `gh workflow enable scrape.yml` (a message that it is
-   already enabled is fine; if it is not found yet, wait a few seconds and retry). Start a
-   small test run: `gh workflow run scrape.yml -f limit=10`. Give them the link to their
+   `gh secret list` must show exactly `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Do not
+   create a `SCRAPER_USER_AGENT` secret.
+6. **Turn on the workflow and test it.** `gh workflow enable scrape.yml` (a message that it
+   is already enabled is fine; if it is not found yet, wait a few seconds and retry). Start
+   a small test run: `gh workflow run scrape.yml -f limit=10`. Give them the link to their
    **Actions** tab (`gh repo view --json url -q .url`, plus `/actions`), where "Daily
    Inventory Scrape" shows the run. Check `gh run list --workflow scrape.yml` until it
-   completes, and report whether it passed. From now on it runs every morning at 12:30 UTC
-   (about 7:30am Central in summer) with no laptop needed.
+   completes, and report whether it passed; if it failed, read the log with
+   `gh run view --log-failed`, fix the cause, and run it again. From now on it runs every
+   morning at 12:30 UTC (about 7:30am Central in summer) with no laptop needed.
 
 ---
 

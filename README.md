@@ -12,9 +12,10 @@ guess at:
 - Did the store in the next town just drop $2,000 across their Sierra 1500s?
 - How many days did that trim take to move at their price, versus mine?
 
-It is built to be set up by Claude Code. You paste nine plain-English prompts, in order, and
-Claude handles the terminal. The only things you supply are your Supabase keys, your store
-and competitors' web addresses, and a few clicks in the Supabase and GitHub websites.
+It is built to be set up by Claude Code. You paste ten plain-English prompts, in order, and
+Claude handles the terminal and your Supabase database. The only things you supply are one
+Supabase login, one copied key, your store and competitors' web addresses, and a GitHub
+login.
 
 **What it is not:** it reads public web pages only, the same ones any shopper can see. It
 never touches a login, a dealer portal, or a DMS.
@@ -55,103 +56,114 @@ scraper writes with the service_role key, which never touches a browser. That sp
 
 ## Quickstart
 
-**Before you start:** a laptop with [Claude Code](https://claude.com/claude-code) open and
-logged in, and your browser logged in to [github.com](https://github.com) and
-[supabase.com](https://supabase.com) (both free). Python 3.9 or newer; Claude will tell you
-if it is missing.
+**Before you start:** a Claude Pro, Max, Team or Enterprise plan, a free
+[Supabase](https://supabase.com) account, and a free [GitHub](https://github.com) account for
+the last step. Python 3.9 or newer; Claude will tell you if it is missing.
 
-Paste each prompt into Claude Code, one at a time, and let it finish before the next.
-Anything in [brackets] is yours to fill in.
+**0. Set up Claude Code** (in your terminal: Terminal on Mac, PowerShell on Windows)
+
+1. Install Claude Code.
+   - Mac / Linux: `curl -fsSL https://claude.ai/install.sh | bash`
+   - Windows: install [Git for Windows](https://git-scm.com/downloads/win) first, then
+     `irm https://claude.ai/install.ps1 | iex`
+
+   Check it: `claude --version` prints a version number and "(Claude Code)".
+2. Make a folder for this project and go into it.
+   - Mac / Linux: `mkdir -p ~/spy-then-sell && cd ~/spy-then-sell`
+   - Windows: `mkdir $HOME\spy-then-sell; cd $HOME\spy-then-sell`
+3. Connect Supabase to Claude in this folder:
+   `claude mcp add --transport http supabase https://mcp.supabase.com/mcp`
+4. Start Claude in this folder: `claude --dangerously-skip-permissions`
+
+   The first time, log in in the browser if asked, then accept the warning. This flag lets
+   Claude run commands and change files in this folder without stopping to ask you each
+   time. Only use it in this project folder, and never with `sudo`.
+
+Then paste each prompt below into Claude Code, one at a time, and let it finish before the
+next. Anything in [brackets] is yours to fill in.
 
 **1. Get the code**
 
-> Clone https://github.com/esurratt4/LearnClaudeForDealers onto my Desktop and open it.
-> Read CLAUDE.md and do the setup: create the Python virtual environment, install the
-> requirements, and install the Playwright browser. Stop when the install is done and tell
-> me. Don't ask me for any keys yet.
+> Clone https://github.com/esurratt4/LearnClaudeForDealers into this folder. Read CLAUDE.md
+> and do the setup: create the Python virtual environment, install the requirements, and
+> install the Playwright browser. Tell me when it's done.
 
 **2. Tour the files**
 
 | Path | What it is |
 |---|---|
 | `config/dealers.yml` | Your store and your competitors |
-| `.env` | Your secret keys (created in step 6, never uploaded) |
+| `.env` | Your secret keys (created in step 5, never uploaded) |
 | `sql/schema.sql` | Builds your database |
 | `scraper/` | The code that reads dealer websites |
 | `dashboard/` | Your dashboard |
 | `CLAUDE.md` | The instructions Claude follows in this project |
 | `.github/workflows` | The daily schedule |
 
-**3. Create your Supabase project**
+**3. Log Claude in to Supabase**
 
-On supabase.com, click **New project**, then:
-1. Pick your organization and name the project (e.g. `spy-then-sell`).
-2. Generate a database password and save it somewhere.
-3. Pick the region closest to you and click **Create new project**.
-4. Wait until it finishes setting up.
+In Claude Code, type `/mcp` > **supabase** > **Authenticate**. The browser opens: log in,
+choose your organization, and approve. Back in Claude Code, supabase shows **Connected**.
 
-**4. Build the tables**
+**4. Create your database**
 
-> Copy the contents of sql/schema.sql to my clipboard.
+> Use the Supabase MCP to create a new project called spy-then-sell in my organization.
+> Wait until it's ready, then apply sql/schema.sql to it and confirm the vehicles,
+> scraper_runs and price_history tables exist.
 
-In Supabase: **SQL Editor** > **New query** > paste > **Run**. If Supabase warns about
-destructive operations, confirm and run: the file only drops its own report views. You should
-see "Success. No rows returned.", and **Table Editor** now shows `vehicles`, `scraper_runs`
-and `price_history`.
+**5. Connect your keys**
 
-**5. Get your keys**
+> Get my spy-then-sell project URL and legacy anon key from the Supabase MCP. Put the URL
+> in .env, and the URL and anon key in the dashboard config. Then give me the direct link
+> to the page where I copy my service_role key.
 
-In Supabase, **Project Settings**:
-- **Data API**: the **Project URL**. The address of your database.
-- **API Keys**: the **anon** key and the **service_role** key (click Reveal).
+Open the link Claude gives you > **Legacy API keys** tab > **service_role** > **Reveal** >
+**Copy**. Then:
 
-The anon key is read-only and is what the dashboard uses. The service_role key has full
-write access and is what the scraper uses. Treat it like the key to the dealership: it only
-ever goes into Claude Code on your own laptop. Never email it, text it, or screenshot it.
+> Here is my service_role key: [paste]. Put it in .env and run the doctor.
 
-**6. Connect**
+| Key | What it is |
+|---|---|
+| Project URL | Your database's address. Not secret. |
+| anon key | Read-only. The dashboard uses it. |
+| service_role key | Full write access. The scraper uses it. Secret: only ever paste it into Claude Code on your own laptop. |
 
-> Here are my Supabase details. Project URL: [paste]. service_role key: [paste]. anon key:
-> [paste]. Put the URL and service_role key in .env, put the URL and anon key in the
-> dashboard config, then run the doctor and tell me if everything passes.
+Success: the doctor shows PASS lines, including "write access confirmed", and ends
+"RESULT: ready to scrape."
 
-Success: the doctor shows PASS lines, including "write access confirmed".
-
-**7. Add your dealership and competitors**
+**6. Add your dealership and competitors**
 
 > Set up config/dealers.yml. My store is [dealership name], [website], [city, state]. My
 > competitors are [name, website, city, state] and [name, website, city, state]. Then run
 > --detect and tell me what platform each site is on.
 
-**8. Test scrape**
+**7. Test scrape**
 
 > Do a dry run on my store with a limit of 10 and tell me if the data looks right.
 
-**9. Real scrape**
+**8. Real scrape**
 
-> Run the scraper on all my dealers with a limit of 10 and tell me how many vehicles were
-> found and saved.
+> Run the scraper on all my dealers with a limit of 10. Then use the Supabase MCP to tell
+> me how many vehicles are saved for each dealer.
 
-Then in Supabase, **Table Editor** > `vehicles`: your rows are there.
-
-**10. Open your dashboard**
+**9. Open your dashboard**
 
 > Start the dashboard and give me the link to open.
 
 Open http://localhost:8000. Filter by dealer, make and model; see what competitors stock
 that you don't, where you sit on price, and who has cut prices.
 
-**11. Make it yours**
+**10. Make it yours**
 
 Ask for anything. For example:
 
 > Add a chart to my dashboard showing which models sit the longest on my competitors' lots.
 
-**12. Run it every morning**
+**11. Run it every morning**
 
-> Create a private GitHub repo for this project under my account and push it. Then walk me
-> through adding SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as repository secrets and
-> turning on the Daily Inventory Scrape workflow.
+> Create a private GitHub repo for this project under my account and push it. Add
+> SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as repository secrets, turn on the Daily
+> Inventory Scrape workflow, and start one test run.
 
 ### Doing it by hand instead
 
@@ -260,8 +272,8 @@ competitor.
 | `v_market_gaps` | "What are competitors stocking that I have none of?" |
 | `v_inventory_by_dealer` | "How much does each store have on the ground? (the morning scoreboard)" |
 
-You can query these in Supabase's Table Editor, or just point your AI assistant at the
-database and ask in plain English.
+Ask Claude about them in plain English: with the Supabase MCP connected, it queries them
+for you.
 
 ---
 
@@ -270,7 +282,7 @@ database and ask in plain English.
 The repo includes a GitHub Action that runs the scrape daily at 12:30 UTC (about 7:30am
 Central) on GitHub's servers — your laptop can be closed.
 
-The easy way is step 12 of the Quickstart: Claude creates a private repo, pushes it, sets the
+The easy way is step 11 of the Quickstart: Claude creates a private repo, pushes it, sets the
 secrets and turns the workflow on. By hand:
 
 1. Push this project to a private repo on your own GitHub account.

@@ -144,12 +144,8 @@ export function ConnectionProblem({ error, retry }) {
   if (error.kind === 'no-tables') {
     return (
       <Frame icon={Database} tone="bad" title="Your database has no tables yet">
-        <p>The dashboard connected, but the tables it reads are not there. They are built by running <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-base">sql/schema.sql</code> in Supabase.</p>
-        <ol className="list-decimal space-y-1 pl-6">
-          <li>In Claude Code, say: <b>Copy the contents of sql/schema.sql to my clipboard.</b></li>
-          <li>In Supabase, click <b>SQL Editor</b>, then <b>New query</b>.</li>
-          <li>Paste, click <b>Run</b>, and wait for <b>Success. No rows returned.</b></li>
-        </ol>
+        <p>The dashboard connected, but the tables it reads are not there. Claude builds them from <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-base">sql/schema.sql</code>.</p>
+        <SayThis>Use the Supabase MCP to apply sql/schema.sql to the project in my .env, and confirm the vehicles, scraper_runs and price_history tables exist.</SayThis>
         <RetryButton onClick={retry} />
       </Frame>
     )
@@ -157,7 +153,8 @@ export function ConnectionProblem({ error, retry }) {
   if (error.kind === 'permission') {
     return (
       <Frame icon={KeyRound} tone="bad" title="The database will not let the dashboard read">
-        <p>The tables exist, but the read-only key has not been given permission to read them. Running <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-base">sql/schema.sql</code> again in the Supabase SQL Editor sets those permissions. It is safe to run twice and does not delete any vehicles.</p>
+        <p>The tables exist, but the read-only key has not been given permission to read them. Applying <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-base">sql/schema.sql</code> again sets those permissions. It is safe to run twice and does not delete any vehicles.</p>
+        <SayThis>Use the Supabase MCP to apply sql/schema.sql again to the project in my .env, so the dashboard can read the tables.</SayThis>
         <RetryButton onClick={retry} />
       </Frame>
     )

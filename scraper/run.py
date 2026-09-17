@@ -286,8 +286,8 @@ def check_line(passed, message, fix=None, warn_only=False):
         [PASS] Config file loaded
           5 dealers configured
         [FAIL] Supabase says table 'vehicles' does not exist
-          FIX: open your Supabase project, click SQL Editor, and run the
-               setup SQL from the README.
+          FIX: apply sql/schema.sql to your project with the Supabase MCP,
+               then run --doctor again.
     """
     if passed:
         label = "[PASS]"
@@ -433,9 +433,9 @@ def cmd_doctor():
                 ok = check_line(
                     exists,
                     "table '{0}' {1}".format(table, "exists" if exists else "is MISSING"),
-                    "open your Supabase project, click SQL Editor > New query, paste\n"
-                    "everything in sql/schema.sql, and click Run. It creates all three\n"
-                    "tables and is safe to run twice.",
+                    "apply sql/schema.sql to this project with the Supabase MCP\n"
+                    "(apply_migration, the whole file unmodified), then run --doctor\n"
+                    "again. It creates all three tables and is safe to run twice.",
                 ) and ok
             # A table the code does not know about is not a failure, just noise.
             for table in sorted(tables):
@@ -453,7 +453,7 @@ def cmd_doctor():
                     "write access confirmed" if can_write
                     else "CANNOT WRITE - {0}".format(why),
                     "you probably pasted the anon key. In Supabase go to\n"
-                    "Project Settings > API Keys, reveal the 'service_role' key,\n"
+                    "Project Settings > API Keys > Legacy API keys, reveal 'service_role',\n"
                     "and put THAT in .env as SUPABASE_SERVICE_ROLE_KEY.\n"
                     "The anon key can read but never write, so scrapes would\n"
                     "finish cleanly and save nothing.",

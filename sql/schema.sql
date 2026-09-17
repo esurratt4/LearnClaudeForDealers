@@ -7,14 +7,10 @@
 --  and that you read from. You run it once, at the very beginning, and then never
 --  think about it again.
 --
---  WHERE TO PASTE IT
---    1. Go to https://supabase.com and open your project.
---    2. In the left sidebar, click the "SQL Editor" icon (it looks like a database).
---    3. Click "+ New query".
---    4. Select ALL the text in this file, copy it, and paste it into that box.
---    5. Click "Run" (or press Cmd+Enter / Ctrl+Enter).
---    6. You should see "Success. No rows returned." That is what success looks like.
---       SQL is quiet when it works.
+--  HOW IT GETS RUN
+--  Claude applies this whole file, unmodified, to your Supabase project through
+--  the Supabase MCP (apply_migration). That is PROMPT 2 in CLAUDE.md. You never
+--  open Supabase to paste it.
 --
 --  IF SOMETHING GOES WRONG
 --  Fix it and run the whole file again. Every statement in here is written to be
@@ -475,7 +471,6 @@ grant select on public.v_price_drops         to anon;
 
 -- ============================================================================
 --  DONE.
---  "Success. No rows returned." means it worked.
---  Next: click "Table Editor" in the sidebar and you should see vehicles,
---  scraper_runs and price_history sitting there empty, waiting.
+--  vehicles, scraper_runs and price_history now exist, empty and waiting.
+--  Claude confirms that with the Supabase MCP (list_tables).
 -- ============================================================================
