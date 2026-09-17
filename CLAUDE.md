@@ -348,8 +348,7 @@ Price cuts and days on lot fill in once the scraper has run on more than one day
 
 ### PROMPT 9: Make the dashboard theirs
 
-> Example: "Add a chart to my dashboard showing which models sit the longest on my
-> competitors' lots."
+> Example: "Add a chart to my dashboard comparing how many vehicles each dealer has in each $10,000 price range."
 
 They can ask for anything. The source is in `dashboard-src/src/` (React + Vite);
 `dashboard/` holds only the built result, so **never hand-edit `dashboard/index.html` or

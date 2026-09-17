@@ -117,7 +117,7 @@ Nothing on the page can change your database.
 The source code lives in `dashboard-src/`. This folder holds only the built result.
 Ask Claude Code in plain English, for example:
 
-- "Add a chart to my dashboard showing which models sit the longest on my competitors' lots."
+- "Add a chart to my dashboard comparing how many vehicles each dealer has in each $10,000 price range."
 - "Add an average mileage column to the competitor table."
 - "Show the top 50 rows in the gap analysis instead of 25."
 

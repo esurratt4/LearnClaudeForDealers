@@ -157,7 +157,7 @@ that you don't, where you sit on price, and who has cut prices.
 
 Ask for anything. For example:
 
-> Add a chart to my dashboard showing which models sit the longest on my competitors' lots.
+> Add a chart to my dashboard comparing how many vehicles each dealer has in each $10,000 price range.
 
 **11. Run it every morning**
 
