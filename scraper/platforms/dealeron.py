@@ -92,6 +92,32 @@ def _url_slugs(sitemap_xml):
     return urls
 
 
+def _links_from_html(html, base_url):
+    """Pull vehicle page addresses out of an HTML page.
+
+    Some DealerOn stores serve a human-readable sitemap PAGE at /sitemap.xml
+    instead of an XML sitemap -- powellwatson.com is one, and its robots.txt
+    points at that same address, so there is no XML version to find. The page
+    still lists every vehicle, just as ordinary links, so we read those.
+
+    Addresses on such a page are usually relative ("/new-Laredo-2027-..."),
+    so anything not already absolute is joined onto the site's own address.
+    """
+    urls = []
+    for raw in re.findall(r'href="([^"]+)"', html):
+        url = raw.strip().replace("&#x2B;", "+").replace("&amp;", "&")
+        if not url or url.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        if url.startswith("//"):
+            url = "https:" + url
+        elif url.startswith("/"):
+            url = base_url.rstrip("/") + url
+        elif not url.startswith("http"):
+            continue
+        urls.append(url)
+    return urls
+
+
 def _condition_markers(condition):
     """Which URL fragments identify the vehicles we were asked to scrape.
 
@@ -135,6 +161,13 @@ def collect_vehicle_urls(base_url, condition="new"):
         return []
 
     locs = _url_slugs(xml)
+
+    # Fallback: /sitemap.xml served an HTML page rather than XML. Read its links
+    # instead. Checked before the sitemap-index branch because an HTML page has no
+    # <loc> tags at all, so there is nothing for that branch to work with.
+    if not locs and "<html" in xml[:2000].lower():
+        print("    That address served a web page, not a sitemap. Reading its links instead...")
+        locs = _links_from_html(xml, base_url)
 
     # Fallback: this was a sitemap index (a list of other sitemaps), not a list of pages.
     # Detect it by "no vehicle URLs here, but plenty of links to more .xml files".
